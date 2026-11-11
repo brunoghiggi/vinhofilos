@@ -28,7 +28,7 @@ export function guessCompleteness(wines, participants, guesses) {
   for (const p of participants) {
     const lacking = wines.filter((w) => !isGuessComplete(map.get(key(w.id, p.participant_id))));
     complete += wines.length - lacking.length;
-    if (lacking.length) missing.push(`${p.name}: vinho(s) ${lacking.map((w) => w.position).join(', ')}`);
+    if (lacking.length) missing.push(`${participantName(p)}: vinho(s) ${lacking.map((w) => w.position).join(', ')}`);
   }
   return { complete, total: wines.length * participants.length, missing };
 }

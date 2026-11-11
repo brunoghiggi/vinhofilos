@@ -65,8 +65,15 @@ export function normalize(s) {
     .trim();
 }
 
+/** Como a pessoa aparece em todo o sistema: pelo apelido (ou o nome, se não tiver). */
 export function participantName(p) {
-  return p.nickname ? `${p.name} (${p.nickname})` : p.name;
+  return (p?.nickname || '').trim() || p?.name || '';
+}
+
+/** Apelido + nome completo, para o cadastro e para desambiguar. */
+export function participantFullName(p) {
+  const nick = (p?.nickname || '').trim();
+  return nick && nick !== p.name ? `${nick} (${p.name})` : p.name;
 }
 
 export function signed(n, formatter = (x) => formatNumber(x)) {

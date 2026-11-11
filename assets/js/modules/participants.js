@@ -5,9 +5,9 @@ import { navigate } from '../router.js';
 import {
   h, toast, confirmDialog, emptyState, field, setFieldError, busy, noControl,
 } from '../utils/dom.js';
-import { normalize, participantName } from '../utils/format.js';
+import { normalize, participantName, participantFullName } from '../utils/format.js';
 
-const byName = (a, b) => a.name.localeCompare(b.name, 'pt-BR');
+const byName = (a, b) => participantName(a).localeCompare(participantName(b), 'pt-BR');
 
 /** Cadastra com aviso de nome duplicado. Retorna o participante ou null. */
 async function createWithDupCheck(list, name, nickname) {
@@ -15,7 +15,7 @@ async function createWithDupCheck(list, name, nickname) {
   if (dup) {
     const ok = await confirmDialog({
       title: 'Nome já cadastrado',
-      message: `Já existe "${participantName(dup)}"${dup.active ? '' : ' (inativo)'}. Deseja cadastrar outra pessoa com o mesmo nome?`,
+      message: `Já existe "${participantFullName(dup)}"${dup.active ? '' : ' (inativo)'}. Deseja cadastrar outra pessoa com o mesmo nome?`,
       confirmText: 'Cadastrar mesmo assim',
     });
     if (!ok) return null;
@@ -43,7 +43,7 @@ function quickAddForm(getList, onCreated, { compact = false } = {}) {
         const p = await createWithDupCheck(getList(), n, nick.value.trim());
         if (!p) return;
         form.reset();
-        toast(`${p.name} cadastrado(a).`, 'success');
+        toast(`${participantName(p)} cadastrado(a).`, 'success');
         onCreated(p);
         name.focus();
       } catch (err) { toast(err.message, 'error'); }
@@ -77,14 +77,14 @@ export async function renderParticipants({ outlet }) {
   function row(p) {
     const toggle = h('button', { type: 'button', class: 'btn btn-ghost btn-sm' }, p.active ? 'Inativar' : 'Reativar');
     toggle.addEventListener('click', () => busy(toggle, async () => {
-      try { replace(await api.updateParticipant(p.id, { active: !p.active })); toast(p.active ? `${p.name} inativado(a).` : `${p.name} reativado(a).`); }
+      try { replace(await api.updateParticipant(p.id, { active: !p.active })); toast(p.active ? `${participantName(p)} inativado(a).` : `${participantName(p)} reativado(a).`); }
       catch (err) { toast(err.message, 'error'); }
     }));
     const edit = h('button', { type: 'button', class: 'btn btn-ghost btn-sm' }, 'Editar');
     const li = h('li', { class: `person-row${p.active ? '' : ' inactive'}` },
       h('div', {},
-        h('span', { class: 'name' }, p.name),
-        p.nickname ? h('span', { class: 'muted' }, ` · ${p.nickname}`) : null,
+        h('span', { class: 'name' }, participantName(p)),
+        p.nickname && p.nickname.trim() !== p.name ? h('span', { class: 'muted' }, ` · ${p.name}`) : null,
         p.active ? null : h('span', { class: 'badge badge-inactive', style: 'margin-left:8px' }, 'Inativo')),
       h('div', { class: 'row' }, edit, toggle));
     edit.addEventListener('click', () => li.replaceWith(editRow(p)));
@@ -164,8 +164,8 @@ export async function renderPresence({ params, outlet }) {
 
   function toggle(pid) {
     const p = byId().get(pid);
-    if (selected.includes(pid)) { selected = selected.filter((x) => x !== pid); live.textContent = `${p.name} removido(a).`; }
-    else { selected.push(pid); live.textContent = `${p.name} adicionado(a) na posição ${selected.length}.`; }
+    if (selected.includes(pid)) { selected = selected.filter((x) => x !== pid); live.textContent = `${participantName(p)} removido(a).`; }
+    else { selected.push(pid); live.textContent = `${participantName(p)} adicionado(a) na posição ${selected.length}.`; }
     setDirty(); draw();
   }
 
@@ -173,7 +173,7 @@ export async function renderPresence({ params, outlet }) {
     const j = index + delta;
     if (j < 0 || j >= selected.length) return;
     [selected[index], selected[j]] = [selected[j], selected[index]];
-    live.textContent = `${byId().get(selected[j]).name} agora na posição ${j + 1}.`;
+    live.textContent = `${participantName(byId().get(selected[j]))} agora na posição ${j + 1}.`;
     setDirty(); draw();
     orderEl.querySelectorAll('.order-item')[j]?.querySelector(delta < 0 ? '[data-up]' : '[data-down]')?.focus();
   }
@@ -192,9 +192,9 @@ export async function renderPresence({ params, outlet }) {
         h('span', { class: 'drag-handle', 'aria-hidden': 'true', title: 'Arraste para reordenar' }, '⋮⋮'),
         h('span', { class: 'pos' }, `${i + 1}.`),
         h('span', { class: 'grow' }, p ? participantName(p) : '—'),
-        h('button', { type: 'button', class: 'btn btn-ghost btn-sm btn-icon', 'data-up': '', 'aria-label': `Subir ${p?.name}`, disabled: i === 0, onclick: () => move(i, -1) }, '↑'),
-        h('button', { type: 'button', class: 'btn btn-ghost btn-sm btn-icon', 'data-down': '', 'aria-label': `Descer ${p?.name}`, disabled: i === selected.length - 1, onclick: () => move(i, 1) }, '↓'),
-        h('button', { type: 'button', class: 'btn btn-ghost btn-sm btn-icon', 'aria-label': `Remover ${p?.name}`, onclick: () => toggle(pid) }, '✕'));
+        h('button', { type: 'button', class: 'btn btn-ghost btn-sm btn-icon', 'data-up': '', 'aria-label': `Subir ${participantName(p)}`, disabled: i === 0, onclick: () => move(i, -1) }, '↑'),
+        h('button', { type: 'button', class: 'btn btn-ghost btn-sm btn-icon', 'data-down': '', 'aria-label': `Descer ${participantName(p)}`, disabled: i === selected.length - 1, onclick: () => move(i, 1) }, '↓'),
+        h('button', { type: 'button', class: 'btn btn-ghost btn-sm btn-icon', 'aria-label': `Remover ${participantName(p)}`, onclick: () => toggle(pid) }, '✕'));
       li.addEventListener('dragstart', (e) => { dragFrom = i; li.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
       li.addEventListener('dragend', () => { li.classList.remove('dragging'); dragFrom = null; });
       li.addEventListener('dragover', (e) => { e.preventDefault(); li.classList.add('drop-target'); });
@@ -229,7 +229,7 @@ export async function renderPresence({ params, outlet }) {
   saveBtn.addEventListener('click', async () => {
     const removedWithGuesses = initial.filter((pid) => !selected.includes(pid) && withGuesses.has(pid));
     if (removedWithGuesses.length) {
-      const names = removedWithGuesses.map((pid) => byId().get(pid)?.name).join(', ');
+      const names = removedWithGuesses.map((pid) => participantName(byId().get(pid))).join(', ');
       const ok = await confirmDialog({
         title: 'Remover participantes com palpites?',
         message: `Os palpites já registrados de ${names} serão apagados.`,

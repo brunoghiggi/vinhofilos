@@ -90,7 +90,8 @@ function show(view) {
   outletEl.replaceChildren(view);
   if (!keepScroll) window.scrollTo(0, 0);
   const heading = view.querySelector('h1');
-  const text = heading?.textContent || '';
+  // Ignora o sobretítulo decorativo (.brand-small) dentro do h1
+  const text = heading ? [...heading.childNodes].filter((n) => !n.classList?.contains('brand-small')).map((n) => n.textContent).join('').trim() : '';
   const home = heading?.classList.contains('hero-title');
   document.title = text && !home ? `${text} · Confraria Vinhófilos` : 'Confraria Vinhófilos';
   if (heading && !keepScroll) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }

@@ -93,13 +93,13 @@ export async function renderHome({ outlet }) {
   try { await api.ensureMonthlyTastings(); } catch (err) { if (err.network) throw err; }
   const [tastings, people, allEvents] = await Promise.all([
     api.listTastings(), api.listParticipants(), api.listAgendaEvents().catch(() => [])]);
-  const names = new Map(people.map((p) => [p.id, p.name]));
+  const names = new Map(people.map((p) => [p.id, participantName(p)]));
   const mine = new Set(tokenStore.ids());
   const today = todayIso();
   const year = today.slice(0, 4);
 
-  // Mensais do ano corrente em diante, agrupadas por ano
-  const monthly = tastings.filter((t) => t.monthly_ref && t.monthly_ref.slice(0, 4) >= year)
+  // Mensais do ano corrente em diante, agrupadas por ano. Finalizadas ficam só no Histórico.
+  const monthly = tastings.filter((t) => t.monthly_ref && t.monthly_ref.slice(0, 4) >= year && t.status !== 'finalizada')
     .sort((a, b) => a.monthly_ref.localeCompare(b.monthly_ref));
   const next = monthly.find((t) => t.status !== 'finalizada' && (t.tasting_date || '') >= today);
   // Eventos especiais futuros entram na agenda, na ordem das datas
@@ -111,7 +111,6 @@ export async function renderHome({ outlet }) {
   const others = tastings.filter((t) => !t.monthly_ref);
   const myOpen = others.filter((t) => mine.has(t.id) && t.status !== 'finalizada');
   const open = others.filter((t) => t.status !== 'finalizada' && !mine.has(t.id)).slice(0, 8);
-  const finished = tastings.filter((t) => t.status === 'finalizada' && !monthly.includes(t)).slice(0, 6);
 
   outlet.append(
     h('section', { class: 'hero' },
@@ -128,11 +127,6 @@ export async function renderHome({ outlet }) {
       tastingList(agenda.filter((x) => (x.event_date || x.monthly_ref).startsWith(y)), mine, { names, nextId: next?.id }))),
     myOpen.length ? section('Suas outras degustações em aberto', tastingList(myOpen, mine, { names })) : null,
     open.length ? section('Outras em preparação ou andamento', tastingList(open, mine, { names })) : null,
-    finished.length
-      ? section('Outras finalizadas recentemente',
-        tastingList(finished, mine),
-        h('p', { class: 'small' }, h('a', { href: '#/historico' }, 'Ver histórico completo →')))
-      : null,
   );
 }
 
@@ -140,35 +134,97 @@ export async function renderHome({ outlet }) {
 // Histórico
 // ---------------------------------------------------------------------
 
+// Layout no estilo de uma página de busca: marca centralizada, caixa de
+// pesquisa arredondada, "Ferramentas" com o filtro de período e resultados
+// com trilha (data), título em link e resumo (descrição, organizadores, vinhos).
 export async function renderHistory({ outlet }) {
-  const all = (await api.listTastings()).filter((t) => t.status === 'finalizada');
+  const [tastings, people] = await Promise.all([api.listTastings(), api.listParticipants()]);
+  const all = tastings.filter((t) => t.status === 'finalizada');
   const sortKey = (t) => t.tasting_date || (t.finished_at || '').slice(0, 10);
   all.sort((a, b) => sortKey(b).localeCompare(sortKey(a)));
-  const mine = new Set(tokenStore.ids());
+  const names = new Map(people.map((p) => [p.id, participantName(p)]));
+  // Nomes dos vinhos de cada degustação (finalizadas são públicas); falha não impede a busca.
+  const wineNames = new Map();
+  await Promise.all(all.map((t) => api.getTastingPublic(t.id)
+    .then((pub) => wineNames.set(t.id, (pub.wines || []).map((w) => w.name)))
+    .catch(() => {})));
 
-  const search = h('input', { type: 'search', placeholder: 'Nome da degustação', autocomplete: 'off' });
+  const search = h('input', {
+    type: 'search', class: 'gs-input', placeholder: 'Pesquisar tema, vinho ou organizador',
+    autocomplete: 'off', 'aria-label': 'Pesquisar no histórico', enterkeyhint: 'search',
+  });
+  const clear = h('button', { type: 'button', class: 'gs-clear', 'aria-label': 'Limpar pesquisa', hidden: true }, '✕');
   const from = h('input', { type: 'date' });
   const to = h('input', { type: 'date' });
-  const results = h('div', { 'aria-live': 'polite' });
+  const tools = h('div', { class: 'gs-tools', hidden: true },
+    h('label', {}, 'De ', from), h('label', {}, 'Até ', to));
+  const toolsBtn = h('button', { type: 'button', class: 'gs-tools-btn', 'aria-expanded': 'false' }, 'Ferramentas');
+  const results = h('div', { class: 'gs-results', 'aria-live': 'polite' });
+  const icon = h('span', { class: 'gs-icon', 'aria-hidden': 'true' });
+  icon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
+  const haystack = (t) => normalize([tastingTitle(t), t.name, t.description,
+    organizerNames(t.organizer_ids, names), ...(wineNames.get(t.id) || [])].join(' '));
+
+  function result(t) {
+    const d = sortKey(t);
+    const weekday = d ? WEEKDAYS[new Date(`${d}T12:00:00Z`).getUTCDay()] : '';
+    const orgs = organizerNames(t.organizer_ids, names);
+    const wines = wineNames.get(t.id) || [];
+    return h('article', { class: 'gs-item' },
+      h('div', { class: 'gs-crumb' },
+        h('img', { class: 'gs-fav', src: 'assets/images/icon.svg', alt: '', width: 26, height: 26 }),
+        h('div', {},
+          h('span', { class: 'gs-site' }, 'Confraria Vinhófilos'),
+          h('span', { class: 'gs-path' }, d ? `${formatDate(d)} · ${weekday}` : 'sem data'))),
+      h('a', { class: 'gs-title', href: `#/degustacao/${t.id}` }, tastingTitle(t)),
+      h('p', { class: 'gs-snippet' },
+        d ? h('span', { class: 'gs-date' }, `${formatDate(d)} — `) : null,
+        t.description || (t.monthly_ref ? `Confraria mensal de ${t.name.replace(/^Confraria de /, '')}.` : t.name),
+        orgs ? ` Organizadores: ${orgs}.` : null),
+      wines.length
+        ? h('div', { class: 'gs-links' }, wines.map((w) => h('span', { class: 'gs-chip' }, w)))
+        : null);
+  }
 
   function draw() {
-    const q = normalize(search.value);
+    clear.hidden = !search.value;
+    const words = normalize(search.value).split(' ').filter(Boolean);
     const items = all.filter((t) => {
       const d = sortKey(t);
-      return (!q || normalize(`${tastingTitle(t)} ${t.name}`).includes(q))
+      const text = haystack(t);
+      return words.every((w) => text.includes(w))
         && (!from.value || d >= from.value)
         && (!to.value || d <= to.value);
     });
-    results.replaceChildren(
-      h('p', { class: 'small muted' }, `${items.length} degustação(ões) finalizada(s)`),
-      items.length ? tastingList(items, mine) : emptyState('Nenhuma degustação encontrada.'));
+    results.replaceChildren();
+    append(results, [
+      h('p', { class: 'gs-count' }, items.length === 1 ? '1 resultado' : `${items.length} resultados`),
+      items.length
+        ? items.map(result)
+        : h('div', { class: 'gs-empty' },
+          h('p', {}, search.value
+            ? ['Nenhuma confraria encontrada para ', h('strong', {}, search.value), '.']
+            : 'Nenhuma confraria finalizada ainda.'),
+          search.value ? h('p', { class: 'small muted' }, 'Tente outro tema, nome de vinho ou organizador.') : null)]);
   }
   [search, from, to].forEach((el) => el.addEventListener('input', draw));
+  clear.addEventListener('click', () => { search.value = ''; draw(); search.focus(); });
+  toolsBtn.addEventListener('click', () => {
+    tools.hidden = !tools.hidden;
+    toolsBtn.setAttribute('aria-expanded', String(!tools.hidden));
+    if (tools.hidden && (from.value || to.value)) { from.value = ''; to.value = ''; draw(); }
+  });
 
   outlet.append(
-    h('h1', {}, 'Histórico'),
-    h('div', { class: 'card grid-3' },
-      field('Buscar', search), field('De', from), field('Até', to)),
+    h('div', { class: 'gs-head' },
+      h('div', { class: 'gs-brand' },
+        h('img', { src: 'assets/images/icon.svg', alt: '', width: 56, height: 56 }),
+        h('h1', {}, h('span', { class: 'brand-small' }, 'Confraria Vinhófilos'), 'Histórico')),
+      h('form', { class: 'gs-box', role: 'search', onsubmit: (e) => { e.preventDefault(); search.blur(); } },
+        icon, search, clear),
+      h('div', { class: 'gs-bar' }, toolsBtn),
+      tools),
     results);
   draw();
 }
@@ -293,15 +349,34 @@ function renderPublic(outlet, pub) {
     t.description ? h('p', {}, t.description) : null,
     organizersBlock(t, pub.organizers || []),
     !t.claimed && t.status !== 'finalizada' ? claimBlock(t) : null,
-    pub.revealed
-      ? h('div', { class: 'card stack' },
-        h('p', {}, 'Degustação finalizada — vinhos e palpites foram revelados.'),
-        h('a', { class: 'btn btn-primary btn-lg', href: `#/degustacao/${t.id}/relatorio` }, 'Ver relatório'))
+    pub.revealed ? revealedBlock(t, pub.wines || [], pub.participants || []) : null,
+    pub.revealed ? null
       : h('div', { class: 'card stack' },
         h('p', {}, h('strong', {}, `${pub.wine_count} vinho(s)`), ' nesta degustação.'),
         h('p', { class: 'muted' }, 'Os dados reais dos vinhos, os participantes e os palpites ficam ocultos até a finalização.')),
     pub.revealed || !t.claimed ? null : importTokenBlock(t.id),
   );
+}
+
+/**
+ * Degustação finalizada: primeiro os vinhos que participaram (e quem esteve
+ * presente); o relatório detalhado fica um clique depois.
+ */
+function revealedBlock(t, wines, participants) {
+  return [
+    section(`Vinhos que participaram (${wines.length})`,
+      wines.length
+        ? h('div', { class: 'stack' }, wines.map((w) => h('div', { class: 'card' },
+          h('h3', {}, `${w.position}. ${w.name}`), wineFacts(w))))
+        : emptyState('Nenhum vinho registrado.')),
+    participants.length
+      ? section(`Participantes (${participants.length})`,
+        h('p', {}, participants.map((p) => participantName(p)).join(', ')))
+      : null,
+    h('div', { class: 'card stack' },
+      h('p', { style: 'margin:0' }, 'Ranking, notas e palpites de cada participante estão no relatório.'),
+      h('a', { class: 'btn btn-primary btn-lg btn-block', href: `#/degustacao/${t.id}/relatorio` }, 'Ver relatório detalhado')),
+  ];
 }
 
 function importTokenBlock(id) {
@@ -372,8 +447,7 @@ function renderAdmin(outlet, data, token) {
       finishBtn);
   } else {
     actions.append(
-      h('p', {}, `Finalizada em ${formatDateTime(t.finished_at)}. Os dados estão públicos.`),
-      h('a', { class: 'btn btn-primary btn-lg btn-block', href: `#/degustacao/${id}/relatorio` }, 'Ver relatório'));
+      h('p', {}, `Finalizada em ${formatDateTime(t.finished_at)}. Os dados estão públicos.`));
   }
 
   const hidden = t.status !== 'finalizada';
@@ -382,14 +456,16 @@ function renderAdmin(outlet, data, token) {
     t.description ? h('p', {}, t.description) : null,
     themeBlock(t),
     organizersBlock(t, data.organizers || []),
-    actions,
-    section(`Vinhos (${wines.length})`,
+    hidden ? actions : null,
+    hidden ? null : revealedBlock(t, wines, participants),
+    hidden ? null : actions,
+    !hidden ? null : section(`Vinhos (${wines.length})`,
       hidden ? h('p', { class: 'notice notice-private small' }, 'Dados reais visíveis apenas para você até a finalização.') : null,
       wines.length
         ? h('div', { class: 'stack' }, wines.map((w) => h('div', { class: 'card' },
           h('h3', {}, `${w.position}. ${w.name}`), wineFacts(w))))
         : emptyState('Nenhum vinho cadastrado.', h('a', { href: `#/degustacao/${id}/editar` }, 'Adicionar vinhos'))),
-    section(`Participantes do dia (${participants.length})`,
+    !hidden ? null : section(`Participantes do dia (${participants.length})`,
       participants.length
         ? h('ol', {}, participants.map((p) => h('li', {}, participantName(p))))
         : emptyState('Nenhum participante selecionado.', h('a', { href: `#/degustacao/${id}/participantes` }, 'Selecionar participantes'))),
