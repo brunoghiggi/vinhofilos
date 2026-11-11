@@ -106,7 +106,6 @@ export async function renderHome({ outlet }) {
   const events = allEvents.filter((e) => e.event_date >= today);
   const agenda = [...monthly, ...events]
     .sort((a, b) => (a.event_date || a.tasting_date || '').localeCompare(b.event_date || b.tasting_date || ''));
-  const years = [...new Set(agenda.map((x) => (x.event_date || x.monthly_ref).slice(0, 4)))].sort();
 
   const others = tastings.filter((t) => !t.monthly_ref);
   const myOpen = others.filter((t) => mine.has(t.id) && t.status !== 'finalizada');
@@ -122,9 +121,7 @@ export async function renderHome({ outlet }) {
         h('a', { class: 'btn btn-primary btn-lg', href: '#/degustacao/nova' }, 'Criar degustação'),
         h('a', { class: 'btn btn-secondary btn-lg', href: '#/participantes' }, 'Participantes'),
         h('a', { class: 'btn btn-secondary btn-lg', href: '#/historico' }, 'Histórico'))),
-    years.map((y) => section(`Agenda de ${y}`,
-      h('p', { class: 'small muted' }, 'Uma confraria por mês, sempre no último domingo. O tema é revelado quando a confraria é finalizada.'),
-      tastingList(agenda.filter((x) => (x.event_date || x.monthly_ref).startsWith(y)), mine, { names, nextId: next?.id }))),
+    agenda.length ? section('Agenda', tastingList(agenda, mine, { names, nextId: next?.id })) : null,
     myOpen.length ? section('Suas outras degustações em aberto', tastingList(myOpen, mine, { names })) : null,
     open.length ? section('Outras em preparação ou andamento', tastingList(open, mine, { names })) : null,
   );
