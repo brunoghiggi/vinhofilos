@@ -159,6 +159,9 @@ export async function renderPresence({ params, outlet }) {
   const orderTitle = h('h2', {});
   const saveBtn = h('button', { type: 'button', class: 'btn btn-primary btn-lg' }, 'Salvar participantes');
   const live = h('p', { class: 'sr-only', 'aria-live': 'polite' });
+  // Seleciona (ou desmarca) de uma vez todos os nomes visíveis na lista
+  const allBtn = h('button', { type: 'button', class: 'btn btn-secondary btn-sm' });
+  let visible = [];
 
   function setDirty() { dirty = true; }
 
@@ -214,6 +217,10 @@ export async function renderPresence({ params, outlet }) {
     const q = normalize(search.value);
     const items = people.filter((p) => (showInactive.checked || p.active || selected.includes(p.id))
       && (!q || normalize(p.name).includes(q) || normalize(p.nickname).includes(q)));
+    visible = items.map((p) => p.id);
+    const allIn = visible.length > 0 && visible.every((pid) => selected.includes(pid));
+    allBtn.textContent = allIn ? 'Desmarcar todos' : 'Selecionar todos';
+    allBtn.disabled = !visible.length;
     allEl.replaceChildren(...(items.length ? items.map((p) => {
       const pos = selected.indexOf(p.id);
       return h('li', {}, h('button', {
@@ -248,6 +255,17 @@ export async function renderPresence({ params, outlet }) {
     }, 'Salvando…');
   });
 
+  allBtn.addEventListener('click', () => {
+    if (visible.every((pid) => selected.includes(pid))) {
+      selected = selected.filter((pid) => !visible.includes(pid));
+      live.textContent = 'Seleção removida.';
+    } else {
+      // Mantém a ordem já escolhida e acrescenta os demais na ordem da lista
+      selected.push(...visible.filter((pid) => !selected.includes(pid)));
+      live.textContent = `${selected.length} participantes selecionados.`;
+    }
+    setDirty(); draw();
+  });
   search.addEventListener('input', drawAll);
   showInactive.addEventListener('change', drawAll);
 
@@ -258,10 +276,10 @@ export async function renderPresence({ params, outlet }) {
     h('div', {},
       h('h1', {}, 'Participantes do dia'),
       h('p', { class: 'muted' }, t.name)),
-    h('p', { class: 'small muted' }, 'A ordem em que você toca nos nomes define a ordem da degustação. Ajuste com ↑ ↓ ou arrastando.'),
+    h('p', { class: 'small muted' }, 'A ordem em que você toca nos nomes define a ordem da degustação ("Selecionar todos" marca todos de uma vez, na ordem da lista). Ajuste com ↑ ↓ ou arrastando.'),
     h('section', { class: 'card stack' }, orderTitle, orderEl),
     h('section', { class: 'section stack' },
-      h('h2', {}, 'Todos os participantes'),
+      h('div', { class: 'row-between' }, h('h2', { style: 'margin:0' }, 'Todos os participantes'), allBtn),
       field('Buscar', search),
       h('label', { class: 'checkbox' }, showInactive, 'Mostrar inativos'),
       allEl),
