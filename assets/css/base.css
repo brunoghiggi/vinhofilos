@@ -92,3 +92,6 @@ h1:focus { outline: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* Garante que o atributo hidden vença classes com display (ex.: .row-between). */
+[hidden] { display: none !important; }

@@ -244,3 +244,7 @@ legend { padding: 0; }
 .chips.reorder .chip.dragging { cursor: grabbing; position: relative; z-index: 2; opacity: .9; box-shadow: 0 4px 14px rgba(0,0,0,.25); transition: none; }
 .chips.reorder .chip.drop-before { box-shadow: -4px 0 0 var(--wine); }
 .chips.reorder .chip.drop-after { box-shadow: 4px 0 0 var(--wine); }
+
+/* Por vinho: participantes do vinho atual (11/11/2026) */
+.chips.chips-sm { margin-top: 8px; padding-bottom: 4px; }
+.chips.chips-sm .chip { min-height: 36px; padding: 4px 10px; }

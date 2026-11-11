@@ -129,9 +129,11 @@ export async function renderOperation({ params, outlet }) {
   };
   state.pIndex = Math.min(state.pIndex || 0, participants.length - 1);
   state.wIndex = Math.min(state.wIndex || 0, wines.length - 1);
+  // Modo por vinho: participante atual dentro do vinho (um por vez, pensado para o celular)
+  state.wpIndex = Math.min(state.wpIndex || 0, participants.length - 1);
   const persist = () => {
     prefs.set('opmode', state.mode);
-    try { sessionStorage.setItem(`vinhofilos.op.${id}`, JSON.stringify({ pIndex: state.pIndex, wIndex: state.wIndex, reveal: state.reveal })); } catch { /* ignore */ }
+    try { sessionStorage.setItem(`vinhofilos.op.${id}`, JSON.stringify({ pIndex: state.pIndex, wIndex: state.wIndex, wpIndex: state.wpIndex, reveal: state.reveal })); } catch { /* ignore */ }
   };
 
   const view = outlet;
@@ -306,11 +308,11 @@ export async function renderOperation({ params, outlet }) {
     const v = valuesFor(k);
     const base = uid('g');
     const inputs = {
-      guessed_region: h('input', { id: `${base}-r`, type: 'text', list: 'dl-op-regions', maxlength: 150, autocomplete: 'off', value: v.guessed_region }),
-      guessed_grape: h('input', { id: `${base}-g`, type: 'text', list: 'dl-op-grapes', maxlength: 200, autocomplete: 'off', value: v.guessed_grape }),
-      guessed_vintage: h('input', { id: `${base}-v`, type: 'text', inputmode: 'numeric', maxlength: 4, placeholder: 'ano', autocomplete: 'off', value: v.guessed_vintage }),
-      guessed_price: h('input', { id: `${base}-p`, type: 'text', inputmode: 'decimal', placeholder: '0,00', autocomplete: 'off', value: v.guessed_price }),
-      score: h('input', { id: `${base}-s`, type: 'text', inputmode: 'numeric', maxlength: 3, placeholder: `${formatNumber(t.score_min)}–${formatNumber(t.score_max)}`, autocomplete: 'off', value: v.score }),
+      guessed_region: h('input', { id: `${base}-r`, type: 'text', list: 'dl-op-regions', maxlength: 150, autocomplete: 'off', enterkeyhint: 'next', value: v.guessed_region }),
+      guessed_grape: h('input', { id: `${base}-g`, type: 'text', list: 'dl-op-grapes', maxlength: 200, autocomplete: 'off', enterkeyhint: 'next', value: v.guessed_grape }),
+      guessed_vintage: h('input', { id: `${base}-v`, type: 'text', inputmode: 'numeric', maxlength: 4, placeholder: 'ano', autocomplete: 'off', enterkeyhint: 'next', value: v.guessed_vintage }),
+      guessed_price: h('input', { id: `${base}-p`, type: 'text', inputmode: 'decimal', placeholder: '0,00', autocomplete: 'off', enterkeyhint: 'next', value: v.guessed_price }),
+      score: h('input', { id: `${base}-s`, type: 'text', inputmode: 'numeric', maxlength: 3, placeholder: `${formatNumber(t.score_min)}–${formatNumber(t.score_max)}`, autocomplete: 'off', enterkeyhint: 'next', value: v.score }),
     };
     // Observações saíram do formulário (11/11/2026); as já gravadas são preservadas.
     const keptNotes = saved.get(k)?.notes ?? null;
@@ -345,7 +347,9 @@ export async function renderOperation({ params, outlet }) {
           if (e.key !== 'Enter') return;
           e.preventDefault();
           const all = [...view.querySelectorAll('.guess-card input')];
-          all[all.indexOf(el) + 1]?.focus();
+          const next = all[all.indexOf(el) + 1];
+          // Por vinho: "Enter"/"Ir" no último campo avança para o próximo participante
+          if (next) next.focus(); else if (state.mode === 'vinho') nextBtn.click();
         });
       }
     }
@@ -403,6 +407,12 @@ export async function renderOperation({ params, outlet }) {
       if (pending.get(k) === payload) pending.delete(k);
       drawProgress();
       drawChips();
+      if (state.mode === 'vinho') {
+        const w = wines[state.wIndex];
+        currentEl.querySelectorAll('.chips-sm .chip').forEach((c, i) => {
+          c.classList.toggle('complete', isGuessComplete(saved.get(key(w.id, participants[i].participant_id))));
+        });
+      }
     }
     if (st === 'error') toast(`Falha ao salvar um palpite: ${message}`, 'error', 6000);
     const card = view.querySelector(`.guess-card[data-key="${CSS.escape(k)}"]`);
@@ -419,31 +429,67 @@ export async function renderOperation({ params, outlet }) {
       cardsEl.replaceChildren(...wines.map((w) => guessCard(w, p, wineLabel(w), null)));
       prevBtn.disabled = state.pIndex === 0;
       nextBtn.textContent = state.pIndex === participants.length - 1 ? 'Concluir' : 'Próximo participante →';
+      prevBtn.textContent = '← Anterior';
     } else {
+      // Por vinho (11/11/2026): um participante por vez; "Próximo vinho" só depois do último participante.
       const w = wines[state.wIndex];
+      const p = participants[state.wpIndex];
+      const lastP = state.wpIndex === participants.length - 1;
+      const lastW = state.wIndex === wines.length - 1;
       currentEl.replaceChildren(h('div', { class: 'current-banner' },
-        h('span', { class: 'muted' }, `Vinho ${state.wIndex + 1} de ${wines.length}`),
-        h('span', { class: 'big' }, wineLabel(w))));
-      cardsEl.replaceChildren(...participants.map((p) => guessCard(w, p, `${p.position}. ${participantName(p)}`, null)));
-      prevBtn.disabled = state.wIndex === 0;
-      nextBtn.textContent = state.wIndex === wines.length - 1 ? 'Concluir' : 'Próximo vinho →';
+        h('span', { class: 'muted' }, `${wineLabel(w)} (${state.wIndex + 1} de ${wines.length}) · participante ${state.wpIndex + 1} de ${participants.length}`),
+        h('span', { class: 'big' }, `${p.position}. ${participantName(p)}`)),
+      h('div', { class: 'chips chips-sm', role: 'list', 'aria-label': 'Participantes deste vinho' },
+        participants.map((x, i) => {
+          const done = isGuessComplete(saved.get(key(w.id, x.participant_id)));
+          return h('button', {
+            type: 'button', role: 'listitem',
+            class: `chip${done ? ' complete' : ''}`,
+            'aria-current': i === state.wpIndex ? 'true' : null,
+            'aria-label': `${x.position}. ${x.name}${done ? ' (completo)' : ''}`,
+            onclick: () => goParticipantInWine(i),
+          }, h('span', { class: 'chip-title' }, `${x.position}. ${x.name}`));
+        })));
+      cardsEl.replaceChildren(guessCard(w, p, wineLabel(w), null));
+      prevBtn.disabled = state.wIndex === 0 && state.wpIndex === 0;
+      prevBtn.textContent = state.wpIndex === 0 ? '← Vinho anterior' : '← Participante anterior';
+      nextBtn.textContent = !lastP ? 'Próximo participante →' : (lastW ? 'Concluir' : 'Próximo vinho →');
+      currentEl.querySelector('.chips-sm [aria-current="true"]')?.scrollIntoView({ block: 'nearest', inline: 'center' });
     }
     for (const [m, b] of Object.entries(modeBtns)) b.setAttribute('aria-pressed', String(state.mode === m));
   }
 
-  function go(i) {
-    if (state.mode === 'participante') state.pIndex = i; else state.wIndex = i;
+  function show() {
     persist(); drawChips(); drawPanel();
     currentEl.scrollIntoView({ block: 'start', behavior: 'smooth' });
     cardsEl.querySelector('input')?.focus({ preventScroll: true });
   }
 
-  prevBtn.addEventListener('click', () => go((state.mode === 'participante' ? state.pIndex : state.wIndex) - 1));
+  /** Ficha do topo: participante (modo participante) ou vinho (modo vinho, recomeça do 1º participante). */
+  function go(i) {
+    if (state.mode === 'participante') state.pIndex = i;
+    else { state.wIndex = i; state.wpIndex = 0; }
+    show();
+  }
+
+  function goParticipantInWine(i) { state.wpIndex = i; show(); }
+
+  prevBtn.addEventListener('click', () => {
+    if (state.mode === 'participante') { go(state.pIndex - 1); return; }
+    if (state.wpIndex > 0) state.wpIndex--;
+    else if (state.wIndex > 0) { state.wIndex--; state.wpIndex = participants.length - 1; }
+    show();
+  });
   nextBtn.addEventListener('click', () => {
-    const idx = state.mode === 'participante' ? state.pIndex : state.wIndex;
-    const len = state.mode === 'participante' ? participants.length : wines.length;
-    if (idx < len - 1) go(idx + 1);
-    else location.hash = `/degustacao/${id}`;
+    if (state.mode === 'participante') {
+      if (state.pIndex < participants.length - 1) go(state.pIndex + 1);
+      else location.hash = `/degustacao/${id}`;
+      return;
+    }
+    if (state.wpIndex < participants.length - 1) state.wpIndex++;
+    else if (state.wIndex < wines.length - 1) { state.wIndex++; state.wpIndex = 0; }
+    else { location.hash = `/degustacao/${id}`; return; }
+    show();
   });
   for (const [m, b] of Object.entries(modeBtns)) {
     b.addEventListener('click', () => { state.mode = m; persist(); drawChips(); drawPanel(); });
