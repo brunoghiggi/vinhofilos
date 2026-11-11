@@ -25,7 +25,9 @@ App web responsivo para degustações às cegas de vinho. Especificação comple
 - Rankings: participantes por pontos de acerto; vinhos por nota média; empates dividem a posição.
 - Acertos: 1 ponto por item (região, uva, safra, preço). Região/uva: um texto contém o outro (sem acento/maiúscula; palpite < 3 letras só se idêntico). Safra exata. Preço até 15% do **preço cheio**. Item sem dado real não conta.
 - Palpite: ordem Região, Uva, Safra, Preço, Pontuação; **safra opcional** (não entra no "completo"); **sem campo Observações**.
-- Degustações mensais automáticas no **último domingo**, ano corrente inteiro (`ensure_monthly_tastings`, chamada na tela inicial). Nascem **sem chave**: o primeiro que "Assumir organização" recebe a chave (`claim_tasting`). Não podem ser excluídas.
+- Degustações mensais automáticas no **último domingo**, do mês atual até 11 meses à frente (`ensure_monthly_tastings`, chamada na tela inicial). Nascem **sem chave**: o primeiro que "Assumir organização" recebe a chave (`claim_tasting`). Não podem ser excluídas. Nome interno fixo "Confraria de <mês> de <ano>".
+- Agenda mostra só **"Confraria do mês"** até finalizar; depois, o **tema** (`tastingTitle` em `utils/format.js` — use-o para qualquer título visível).
+- Tema (`theme`) é secreto até finalizar, **garantido no banco**: nunca conceder `theme` ao anon nem devolvê-lo em função pública; o público só lê `public_theme` (coluna calculada, preenchida só quando finalizada).
 - Organizadores: participantes do cadastro (até 10), editáveis por **qualquer pessoa** até finalizar (`set_tasting_organizers`). Independentes de quem tem a chave.
 - Ordem dos participantes durante a degustação: botão "Reordenar" na tela de palpites, arrastar para os lados.
 - `creator_token_hash` agora pode ser nulo: qualquer função nova que valide chave deve usar `_assert_creator` (que recusa hash nulo), nunca comparar o hash direto.

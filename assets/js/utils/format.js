@@ -73,3 +73,13 @@ export function signed(n, formatter = (x) => formatNumber(x)) {
   if (n === 0) return 'igual';
   return `${n > 0 ? '+' : '−'}${formatter(Math.abs(n))}`;
 }
+
+/**
+ * Título visível de uma degustação (11/11/2026). Mensais aparecem como
+ * "Confraria do mês" até serem finalizadas; finalizadas mostram o tema
+ * (public_theme só vem preenchido do banco depois da finalização).
+ */
+export function tastingTitle(t) {
+  if (t.status === 'finalizada') return t.public_theme || t.name;
+  return t.monthly_ref ? 'Confraria do mês' : t.name;
+}

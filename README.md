@@ -69,7 +69,7 @@ O roteamento usa `#/...` na URL, então não é preciso nenhuma configuração e
 - `create_tasting` gera a chave no banco (24 bytes aleatórios) e armazena somente o **hash SHA-256**. A chave volta uma única vez ao navegador do criador.
 - Todas as operações do organizador (`save_tasting`, `set_tasting_participants`, `start_tasting`, `save_guess`, `finish_tasting`, `delete_tasting`, `get_tasting_admin`) validam a chave no banco.
 - `get_tasting_public` só devolve vinhos, presentes e palpites quando o status é `finalizada`.
-- `ensure_monthly_tastings` cria (uma vez) as degustações mensais do ano, no último domingo, **sem chave**. `claim_tasting` entrega a chave ao **primeiro** que assumir; depois disso só quem tem a chave opera. Sem dono, nenhuma operação do organizador é aceita.
+- `ensure_monthly_tastings` cria (uma vez) as confrarias mensais do mês atual até 11 meses à frente, no último domingo, **sem chave**. O tema (`theme`) nunca é legível pelo público; só `public_theme`, preenchida quando a confraria é finalizada. `claim_tasting` entrega a chave ao **primeiro** que assumir; depois disso só quem tem a chave opera. Sem dono, nenhuma operação do organizador é aceita.
 - `set_tasting_organizers` permite a qualquer visitante definir os organizadores (participantes do cadastro) até a degustação ser finalizada.
 - A chave não aparece em URLs. O organizador pode copiá-la (painel da degustação → *Chave de controle*) e importá-la em outro aparelho (página da degustação → *Sou o organizador*).
 

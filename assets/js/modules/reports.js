@@ -5,7 +5,7 @@ import { tokenStore, prefs } from '../services/token-store.js';
 import { h, statusBadge, emptyState, section, toast } from '../utils/dom.js';
 import {
   formatDate, formatDateTime, formatMoney, formatNumber, formatText, formatVintage,
-  isBlank, normalize, participantName, signed,
+  isBlank, normalize, participantName, signed, tastingTitle,
 } from '../utils/format.js';
 import { wineFacts } from './wines.js';
 import {
@@ -56,7 +56,7 @@ export async function renderReport({ params, outlet }) {
     data = await api.getTastingPublic(id);
     if (!data.revealed) {
       outlet.append(h('div', { class: 'card stack' },
-        h('h1', {}, data.tasting.name),
+        h('h1', {}, tastingTitle(data.tasting)),
         h('p', {}, 'O relatório fica disponível depois que a degustação for finalizada.'),
         h('a', { class: 'btn btn-secondary', href: `#/degustacao/${id}` }, 'Voltar')));
       return;
@@ -196,7 +196,7 @@ export async function renderReport({ params, outlet }) {
   outlet.append(
     h('div', { class: 'page-head' },
       h('div', {},
-        h('h1', {}, `Relatório · ${t.name}`),
+        h('h1', {}, `Relatório · ${tastingTitle(t)}`),
         h('div', { class: 'meta' }, statusBadge(t.status), h('span', {}, formatDate(t.tasting_date)),
           t.finished_at ? h('span', { class: 'small' }, `finalizada em ${formatDateTime(t.finished_at)}`) : null)),
       h('div', { class: 'row no-print' },
@@ -224,7 +224,7 @@ function exportCsv(t, wines, participants, g) {
     for (const p of participants) {
       const x = g(w, p);
       const s = scoreGuess(x, w);
-      rows.push([t.name, t.tasting_date || '', w.position, w.name, w.country, w.region, w.grape, w.vintage,
+      rows.push([tastingTitle(t), t.tasting_date || '', w.position, w.name, w.country, w.region, w.grape, w.vintage,
         num(w.price), num(w.discounted_price), p.position, participantName(p), x.guessed_region, x.guessed_grape,
         x.guessed_vintage, num(x.guessed_price), num(x.score), s.points, s.max]);
     }
@@ -235,7 +235,7 @@ function exportCsv(t, wines, participants, g) {
   };
   const csv = `﻿${[header, ...rows].map((r) => r.map(esc).join(';')).join('\r\n')}`;
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  const slug = normalize(t.name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'degustacao';
+  const slug = normalize(tastingTitle(t)).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'degustacao';
   const a = h('a', { href: url, download: `vinhofilos-${slug}.csv` });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);

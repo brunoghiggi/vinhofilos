@@ -47,9 +47,13 @@ const publicTasting = (t) => {
   c.claimed = !!c.creator_token_hash;
   c.organizer_ids = c.organizer_ids || [];
   c.monthly_ref = c.monthly_ref || null;
+  c.theme = c.theme || null;
+  c.public_theme = c.status === 'finalizada' ? c.theme : null; // tema só depois de finalizar
   delete c.creator_token_hash;
   return c;
 };
+/** Visão pública: sem o tema secreto (só public_theme). */
+const openTasting = (t) => { const c = publicTasting(t); delete c.theme; return c; };
 
 function organizers(db, ids) {
   return (ids || []).map((id) => db.participants.find((p) => p.id === id)).filter(Boolean)
@@ -148,11 +152,11 @@ export function createDemoBackend() {
       return p;
     }),
 
-    listTastings: () => q((db) => db.tastings.map(publicTasting).sort((a, b) => b.created_at.localeCompare(a.created_at))),
+    listTastings: () => q((db) => db.tastings.map(openTasting).sort((a, b) => b.created_at.localeCompare(a.created_at))),
 
     getTastingPublic: (id) => q((db) => {
       const t = db.tastings.find((x) => x.id === id) || fail('Degustação não encontrada.');
-      const out = { tasting: publicTasting(t), organizers: organizers(db, t.organizer_ids), wine_count: db.wines.filter((w) => w.tasting_id === id).length, revealed: t.status === 'finalizada' };
+      const out = { tasting: openTasting(t), organizers: organizers(db, t.organizer_ids), wine_count: db.wines.filter((w) => w.tasting_id === id).length, revealed: t.status === 'finalizada' };
       return out.revealed ? { ...out, ...details(db, id) } : out;
     }),
 
@@ -246,21 +250,29 @@ export function createDemoBackend() {
     ensureMonthlyTastings: () => tx((db) => {
       const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
       const [y, m] = today.split('-').map(Number);
-      const lastYear = m === 12 ? y + 1 : y;
       let created = 0;
-      for (let yy = y; yy <= lastYear; yy++) {
-        for (let mm = 0; mm < 12; mm++) {
-          const ref = `${yy}-${String(mm + 1).padStart(2, '0')}-01`;
-          if (db.tastings.some((t) => t.monthly_ref === ref)) continue;
-          db.tastings.push({
-            id: uuid(), name: `Degustação de ${MONTHS[mm]} de ${yy}`, tasting_date: lastSunday(yy, mm), description: null,
-            status: 'rascunho', score_min: 50, score_max: 100, creator_token_hash: null,
-            created_at: now(), started_at: null, finished_at: null, monthly_ref: ref, organizer_ids: [],
-          });
-          created++;
-        }
+      // Mês atual + 11 seguintes (nunca meses passados)
+      for (let k = 0; k < 12; k++) {
+        const yy = y + Math.floor((m - 1 + k) / 12);
+        const mm = (m - 1 + k) % 12;
+        const ref = `${yy}-${String(mm + 1).padStart(2, '0')}-01`;
+        if (db.tastings.some((t) => t.monthly_ref === ref)) continue;
+        db.tastings.push({
+          id: uuid(), name: `Confraria de ${MONTHS[mm]} de ${yy}`, tasting_date: lastSunday(yy, mm), description: null,
+          status: 'rascunho', score_min: 50, score_max: 100, creator_token_hash: null,
+          created_at: now(), started_at: null, finished_at: null, monthly_ref: ref, organizer_ids: [], theme: null,
+        });
+        created++;
       }
       return created;
+    }),
+
+    setTastingTheme: (id, token, theme) => tx(async (db) => {
+      const t = await assertCreator(db, id, token);
+      if (t.status === 'finalizada') fail('Degustação finalizada não pode ser alterada.');
+      const v = text(theme);
+      if (v && v.length > 150) fail('O tema pode ter no máximo 150 caracteres.');
+      t.theme = v;
     }),
 
     claimTasting: (id) => tx(async (db) => {

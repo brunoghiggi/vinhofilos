@@ -109,6 +109,15 @@ alter table public.tastings add column if not exists claimed boolean
 create unique index if not exists tastings_monthly_ref_key
   on public.tastings (monthly_ref) where monthly_ref is not null;
 
+-- Tema da confraria (11/11/2026): secreto até a finalização.
+--   theme         preenchido pelo organizador (com a chave); NUNCA concedido ao anon
+--   public_theme  cópia calculada que só existe quando status = 'finalizada';
+--                 é a única coluna de tema legível pelo público
+alter table public.tastings add column if not exists theme text
+  check (theme is null or char_length(theme) <= 150);
+alter table public.tastings add column if not exists public_theme text
+  generated always as (case when status = 'finalizada' then theme end) stored;
+
 -- ---------------------------------------------------------------------
 -- Permissões e RLS
 -- ---------------------------------------------------------------------
@@ -137,7 +146,7 @@ create policy participants_update on public.participants for update to anon, aut
 
 -- tastings: somente colunas públicas (o hash do token NÃO é concedido)
 grant select (id, name, tasting_date, description, status, score_min, score_max,
-              created_at, started_at, finished_at, monthly_ref, organizer_ids, claimed)
+              created_at, started_at, finished_at, monthly_ref, organizer_ids, claimed, public_theme)
   on public.tastings to anon, authenticated;
 
 drop policy if exists tastings_select on public.tastings;
@@ -313,7 +322,7 @@ begin
     raise exception 'Degustação não encontrada.';
   end if;
   result := jsonb_build_object(
-    'tasting', to_jsonb(t) - 'creator_token_hash',
+    'tasting', to_jsonb(t) - 'creator_token_hash' - 'theme',  -- tema só via public_theme
     'organizers', public._organizers(t.organizer_ids),
     'wine_count', (select count(*) from public.tasting_wines where tasting_id = t.id),
     'revealed', t.status = 'finalizada'
@@ -593,8 +602,8 @@ $$;
 -- Degustações mensais e organizadores
 -- ---------------------------------------------------------------------
 
--- Garante uma degustação por mês, no último domingo, para todos os meses
--- do ano corrente (em dezembro, também os do ano seguinte). Idempotente:
+-- Garante uma degustação por mês, no último domingo, do mês atual até
+-- 11 meses à frente (12 no total; nunca cria meses passados). Idempotente:
 -- chamada pelo app ao abrir a tela inicial. Retorna quantas criou.
 create or replace function public.ensure_monthly_tastings()
 returns integer
@@ -603,21 +612,18 @@ security definer
 set search_path = public
 as $$
 declare
-  v_today   date := (now() at time zone 'America/Sao_Paulo')::date;
-  v_year    int  := extract(year from v_today)::int;
-  v_last    date;
+  v_first   date := date_trunc('month', (now() at time zone 'America/Sao_Paulo'))::date;
   v_month   date;
   v_created int := 0;
   v_rows    int;
   v_names   text[] := array['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho',
                             'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 begin
-  v_last := make_date(case when extract(month from v_today) = 12 then v_year + 1 else v_year end, 12, 1);
   for v_month in
-    select gs::date from generate_series(make_date(v_year, 1, 1), v_last, interval '1 month') as gs
+    select gs::date from generate_series(v_first, v_first + interval '11 months', interval '1 month') as gs
   loop
     insert into public.tastings (name, tasting_date, status, score_min, score_max, creator_token_hash, monthly_ref)
-    values (format('Degustação de %s de %s', v_names[extract(month from v_month)::int], extract(year from v_month)::int),
+    values (format('Confraria de %s de %s', v_names[extract(month from v_month)::int], extract(year from v_month)::int),
             public._last_sunday(v_month), 'rascunho', 50, 100, null, v_month)
     on conflict (monthly_ref) where monthly_ref is not null do nothing;
     get diagnostics v_rows = row_count;
@@ -648,6 +654,27 @@ begin
     raise exception 'Esta degustação já tem um organizador com a chave de controle.';
   end if;
   return jsonb_build_object('id', p_tasting, 'token', v_token);
+end;
+$$;
+
+-- Tema da confraria: só quem tem a chave define; fica oculto até finalizar.
+create or replace function public.set_tasting_theme(p_tasting uuid, p_token text, p_theme text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  t public.tastings;
+begin
+  t := public._assert_creator(p_tasting, p_token);
+  if t.status = 'finalizada' then
+    raise exception 'Degustação finalizada não pode ser alterada.';
+  end if;
+  if char_length(btrim(p_theme)) > 150 then
+    raise exception 'O tema pode ter no máximo 150 caracteres.';
+  end if;
+  update public.tastings set theme = nullif(btrim(p_theme), '') where id = p_tasting;
 end;
 $$;
 
@@ -707,3 +734,4 @@ revoke execute on function public._last_sunday(date)           from public, anon
 grant execute on function public.ensure_monthly_tastings()                 to anon, authenticated;
 grant execute on function public.claim_tasting(uuid)                       to anon, authenticated;
 grant execute on function public.set_tasting_organizers(uuid, uuid[])      to anon, authenticated;
+grant execute on function public.set_tasting_theme(uuid, text, text)        to anon, authenticated;

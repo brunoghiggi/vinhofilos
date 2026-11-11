@@ -93,6 +93,9 @@ export async function renderTastingForm({ params, outlet }) {
   const nameIn = h('input', { type: 'text', maxlength: 120, value: t.name || '', autocomplete: 'off', required: true });
   const dateIn = h('input', { type: 'date', value: t.tasting_date || '' });
   const descIn = h('textarea', { maxlength: 2000, rows: 2, value: t.description || '' });
+  // Tema (11/11/2026): secreto até finalizar. Mensais têm nome fixo para não vazar o tema.
+  const monthly = Boolean(t.monthly_ref);
+  const themeIn = h('input', { type: 'text', maxlength: 150, value: t.theme || '', autocomplete: 'off', placeholder: 'Ex.: Saperavi, vinhos da Geórgia…' });
 
   const winesEl = h('div', { class: 'stack' });
   const inputsByKey = new Map(); // _key → { campo: input }
@@ -175,14 +178,23 @@ export async function renderTastingForm({ params, outlet }) {
     datalist('dl-grapes', GRAPES, wines.map((w) => w.grape)),
     h('section', { class: 'card stack' },
       h('h2', {}, 'Dados gerais'),
-      field('Nome do encontro', nameIn, { required: true }),
+      monthly
+        ? h('div', { class: 'field' },
+          h('span', { style: 'font-weight:600;font-size:.92rem' }, 'Encontro'),
+          h('p', { style: 'margin:0' }, t.name),
+          h('p', { class: 'field-hint' }, 'Na agenda aparece como "Confraria do mês" até ser finalizada.'))
+        : field('Nome do encontro', nameIn, { required: true }),
+      field('Tema da confraria', themeIn),
+      h('p', { class: 'notice notice-private small', style: 'margin-top:-6px' },
+        h('strong', {}, 'O tema fica oculto: '),
+        'ninguém além de quem tem a chave de controle o vê — nem na agenda, nem na página da confraria. Ele só aparece para todos depois que a confraria for finalizada. Não escreva o tema no nome nem na descrição.'),
       h('div', { class: 'grid-2' },
         field('Data', dateIn, { hint: 'Opcional; pode ser definida depois' }),
         h('div', { class: 'field' },
           h('span', { style: 'font-weight:600;font-size:.92rem' }, 'Escala de pontuação'),
           h('p', { style: 'margin:0' }, `${SCORE.min} a ${SCORE.max}, somente números inteiros`),
           h('p', { class: 'field-hint' }, 'Escala padrão da confraria.'))),
-      field('Descrição', descIn, { hint: 'Opcional' })),
+      field('Descrição', descIn, { hint: 'Opcional — visível para todos' })),
     h('section', { class: 'section stack' },
       h('h2', {}, 'Vinhos'),
       h('p', { class: 'notice notice-private small' }, 'Estes são os dados REAIS. Ficam ocultos para os demais até a finalização.'),
@@ -197,8 +209,9 @@ export async function renderTastingForm({ params, outlet }) {
     let firstInvalid = null;
     const mark = (input, msg) => { setFieldError(input, msg); if (msg && !firstInvalid) firstInvalid = input; };
 
-    const name = nameIn.value.trim();
-    mark(nameIn, name ? null : 'Informe o nome do encontro.');
+    const name = monthly ? t.name : nameIn.value.trim();
+    if (!monthly) mark(nameIn, name ? null : 'Informe o nome do encontro.');
+    const theme = themeIn.value.trim();
 
     const payloadWines = wines.map((w) => {
       const { value, errors } = validateWine(w);
@@ -230,10 +243,12 @@ export async function renderTastingForm({ params, outlet }) {
       try {
         if (editing) {
           await api.saveTasting(params.id, token, payload);
+          if (theme !== (t.theme || '')) await api.setTastingTheme(params.id, token, theme);
           toast('Alterações salvas.', 'success');
           navigate(`/degustacao/${params.id}`);
         } else {
           const { id, token: newToken } = await api.createTasting(payload);
+          if (theme) await api.setTastingTheme(id, newToken, theme);
           const saved = tokenStore.set(id, newToken);
           await showTokenDialog(newToken, { saved });
           toast('Degustação criada.', 'success');

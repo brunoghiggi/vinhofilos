@@ -19,7 +19,7 @@ import { AppError, sleep } from '../utils/errors.js';
 const SUPABASE_ESM = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 
 const P_COLS = 'id,name,nickname,active,created_at';
-const T_COLS = 'id,name,tasting_date,description,status,score_min,score_max,created_at,started_at,finished_at,monthly_ref,organizer_ids,claimed';
+const T_COLS = 'id,name,tasting_date,description,status,score_min,score_max,created_at,started_at,finished_at,monthly_ref,organizer_ids,claimed,public_theme';
 
 let backend = null;
 export const backendInfo = { demo: false };
@@ -139,6 +139,7 @@ function createSupabaseBackend(sb) {
     ensureMonthlyTastings: () => rpc('ensure_monthly_tastings', {}, 3),
     claimTasting: (id) => rpc('claim_tasting', { p_tasting: id }),
     setTastingOrganizers: (id, ids) => rpc('set_tasting_organizers', { p_tasting: id, p_ids: ids }),
+    setTastingTheme: (id, token, theme) => rpc('set_tasting_theme', { p_tasting: id, p_token: token, p_theme: theme }),
     finishTasting: (id, token) => rpc('finish_tasting', { p_tasting: id, p_token: token }),
     // Upsert idempotente: o módulo de palpites cuida das novas tentativas.
     saveGuess: (id, token, g) => rpc('save_guess', {

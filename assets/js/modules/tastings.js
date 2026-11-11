@@ -5,7 +5,7 @@ import { navigate, refresh } from '../router.js';
 import {
   h, append, toast, confirmDialog, statusBadge, emptyState, section, busy, copyText, field,
 } from '../utils/dom.js';
-import { formatDate, formatDateTime, normalize, participantName } from '../utils/format.js';
+import { formatDate, formatDateTime, normalize, participantName, tastingTitle } from '../utils/format.js';
 import { wineFacts } from './wines.js';
 import { guessCompleteness } from './guesses.js';
 
@@ -31,7 +31,7 @@ function tastingList(items, mine = new Set(), { names = null, nextId = null } = 
     return h('li', {},
       h('a', { class: `tasting-card${t.id === nextId ? ' is-next' : ''}`, href: `#/degustacao/${t.id}` },
         h('div', { class: 'tc-main' },
-          h('strong', {}, t.name),
+          h('strong', {}, tastingTitle(t)),
           h('span', { class: 'muted small' }, formatDate(t.tasting_date)),
           names
             ? h('span', { class: 'small tc-orgs' }, orgs ? `Organizadores: ${orgs}` : 'Organizadores a definir')
@@ -95,8 +95,8 @@ export async function renderHome({ outlet }) {
         h('a', { class: 'btn btn-primary btn-lg', href: '#/degustacao/nova' }, 'Criar degustação'),
         h('a', { class: 'btn btn-secondary btn-lg', href: '#/participantes' }, 'Participantes'),
         h('a', { class: 'btn btn-secondary btn-lg', href: '#/historico' }, 'Histórico'))),
-    years.map((y) => section(`Degustações de ${y}`,
-      h('p', { class: 'small muted' }, 'Uma por mês, sempre no último domingo.'),
+    years.map((y) => section(`Agenda de ${y}`,
+      h('p', { class: 'small muted' }, 'Uma confraria por mês, sempre no último domingo. O tema é revelado quando a confraria é finalizada.'),
       tastingList(monthly.filter((t) => t.monthly_ref.startsWith(y)), mine, { names, nextId: next?.id }))),
     myOpen.length ? section('Suas outras degustações em aberto', tastingList(myOpen, mine, { names })) : null,
     open.length ? section('Outras em preparação ou andamento', tastingList(open, mine, { names })) : null,
@@ -127,7 +127,7 @@ export async function renderHistory({ outlet }) {
     const q = normalize(search.value);
     const items = all.filter((t) => {
       const d = sortKey(t);
-      return (!q || normalize(t.name).includes(q))
+      return (!q || normalize(`${tastingTitle(t)} ${t.name}`).includes(q))
         && (!from.value || d >= from.value)
         && (!to.value || d <= to.value);
     });
@@ -170,9 +170,22 @@ export async function renderTastingDetail({ params, outlet }) {
 function headBlock(t, extra) {
   return h('div', { class: 'page-head' },
     h('div', {},
-      h('h1', {}, t.name),
+      h('h1', {}, tastingTitle(t)),
       h('div', { class: 'meta' }, statusBadge(t.status), h('span', {}, formatDate(t.tasting_date)), extra || null)),
   );
+}
+
+/** Tema da confraria para o organizador (oculto para os demais até finalizar). */
+function themeBlock(t) {
+  const editable = t.status !== 'finalizada';
+  return h('section', { class: 'card stack' },
+    h('div', { class: 'row-between' },
+      h('h2', { style: 'margin:0' }, 'Tema da confraria'),
+      editable ? h('a', { class: 'btn btn-secondary btn-sm', href: `#/degustacao/${t.id}/editar` }, t.theme ? 'Editar tema' : 'Definir tema') : null),
+    h('p', {}, t.theme ? h('strong', {}, t.theme) : h('span', { class: 'muted' }, 'Ainda não definido.')),
+    editable
+      ? h('p', { class: 'notice notice-private small' }, 'Só você vê o tema. Ele fica oculto para todos (inclusive na agenda, que mostra "Confraria do mês") e só aparece depois que a confraria for finalizada.')
+      : null);
 }
 
 /** Organizadores: visíveis a todos; qualquer pessoa edita até finalizar. */
@@ -339,6 +352,7 @@ function renderAdmin(outlet, data, token) {
   outlet.append(
     headBlock(t, h('span', { class: 'badge badge-mine' }, 'Você organiza')),
     t.description ? h('p', {}, t.description) : null,
+    themeBlock(t),
     organizersBlock(t, data.organizers || []),
     actions,
     section(`Vinhos (${wines.length})`,
