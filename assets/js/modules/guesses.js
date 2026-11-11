@@ -10,14 +10,15 @@ import { sleep } from '../utils/errors.js';
 
 const MAX_YEAR = new Date().getFullYear() + 1;
 const key = (wineId, participantId) => `${wineId}:${participantId}`;
-const FIELDS = ['guessed_region', 'guessed_vintage', 'guessed_grape', 'guessed_price', 'score'];
+// Safra é opcional (decisão de 11/11/2026): não entra no critério de "completo".
+const REQUIRED = ['guessed_region', 'guessed_grape', 'guessed_price', 'score'];
 
-/** Completo = região, safra, uva, preço e pontuação preenchidos. */
+/** Completo = região, uva, preço e pontuação preenchidos (safra opcional). */
 export function isGuessComplete(g) {
-  return Boolean(g) && FIELDS.every((f) => !isBlank(g[f]));
+  return Boolean(g) && REQUIRED.every((f) => !isBlank(g[f]));
 }
 export function isGuessStarted(g) {
-  return Boolean(g) && [...FIELDS, 'notes'].some((f) => !isBlank(g[f]));
+  return Boolean(g) && [...REQUIRED, 'guessed_vintage', 'notes'].some((f) => !isBlank(g[f]));
 }
 
 export function guessCompleteness(wines, participants, guesses) {
@@ -145,6 +146,10 @@ export async function renderOperation({ params, outlet }) {
   };
   const revealBox = h('input', { type: 'checkbox', checked: state.reveal });
   const chipsEl = h('div', { class: 'chips', role: 'list' });
+  const reorderBtn = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'aria-pressed': 'false' }, '↔ Reordenar');
+  const reorderHint = h('p', { class: 'small notice', hidden: true },
+    'Arraste os nomes para a esquerda ou direita (ou use as setas do teclado). A nova ordem é salva na hora.');
+  const reorderRow = h('div', { class: 'row-between' }, h('span', { class: 'small muted' }, 'Ordem dos participantes'), reorderBtn);
   const currentEl = h('div', {});
   const cardsEl = h('div', { class: 'stack' });
   const prevBtn = h('button', { type: 'button', class: 'btn btn-ghost' }, '← Anterior');
@@ -191,16 +196,110 @@ export async function renderOperation({ params, outlet }) {
         : counts((w) => w.id === item.id);
       const current = i === (state.mode === 'participante' ? state.pIndex : state.wIndex);
       const title = state.mode === 'participante' ? `${item.position}. ${item.name}` : wineLabel(item);
+      const reordering = reorderOn();
       return h('button', {
         type: 'button', role: 'listitem',
         class: `chip${c.done === c.total ? ' complete' : ''}`,
+        dataset: { index: String(i) },
         'aria-current': current ? 'true' : null,
-        'aria-label': `${title}: ${c.done} de ${c.total} completos`,
-        onclick: () => go(i),
+        'aria-label': reordering
+          ? `${title}: posição ${i + 1} de ${items.length}. Setas esquerda e direita movem.`
+          : `${title}: ${c.done} de ${c.total} completos`,
+        onclick: () => { if (!reorderOn()) go(i); },
+        onkeydown: (e) => {
+          if (!reordering || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+          e.preventDefault();
+          moveParticipant(i, i + (e.key === 'ArrowLeft' ? -1 : 1), true);
+        },
       }, h('span', { class: 'chip-title' }, title), h('span', { class: 'chip-sub' }, `${c.done}/${c.total}`));
     }));
+    chipsEl.classList.toggle('reorder', reorderOn());
+    reorderRow.hidden = state.mode !== 'participante';
+    reorderHint.hidden = !reorderOn();
+    reorderBtn.setAttribute('aria-pressed', String(reorderOn()));
+    reorderBtn.textContent = reorderOn() ? 'Concluir ordem' : '↔ Reordenar';
     chipsEl.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest', inline: 'center' });
   }
+
+  // ----- ordem dos participantes durante a degustação (11/11/2026)
+  // Arrastar a ficha para os lados (mouse ou toque) ou setas do teclado.
+  let reorder = false;
+  let orderSave = Promise.resolve();
+  const reorderOn = () => reorder && state.mode === 'participante';
+
+  function moveParticipant(from, to, refocus = false) {
+    if (to < 0 || to >= participants.length || to === from) return;
+    const before = participants.slice();
+    const current = participants[state.pIndex];
+    const [p] = participants.splice(from, 1);
+    participants.splice(to, 0, p);
+    participants.forEach((x, i) => { x.position = i + 1; });
+    state.pIndex = participants.indexOf(current);
+    persist(); drawChips(); drawPanel();
+    if (refocus) chipsEl.querySelector(`[data-index="${to}"]`)?.focus();
+    const ids = participants.map((x) => x.participant_id);
+    orderSave = orderSave.then(async () => {
+      try {
+        await api.setTastingParticipants(id, token, ids);
+        toast('Ordem salva.', 'success', 1500);
+      } catch (err) {
+        toast(`Não foi possível salvar a ordem: ${err.message}`, 'error', 6000);
+        participants.splice(0, participants.length, ...before);
+        participants.forEach((x, i) => { x.position = i + 1; });
+        state.pIndex = Math.max(0, participants.indexOf(current));
+        persist(); drawChips(); drawPanel();
+      }
+    });
+  }
+
+  let drag = null;
+  const chipAt = (el) => el?.closest?.('.chip');
+  function dropIndex(x) {
+    // Quantas outras fichas ficam à esquerda do ponteiro = nova posição
+    return [...chipsEl.children].filter((c, i) => {
+      if (i === drag.from) return false;
+      const r = c.getBoundingClientRect();
+      return r.left + r.width / 2 < x;
+    }).length;
+  }
+  chipsEl.addEventListener('pointerdown', (e) => {
+    const chip = chipAt(e.target);
+    if (!reorderOn() || !chip || e.button > 0) return;
+    e.preventDefault();
+    chip.setPointerCapture(e.pointerId);
+    drag = { chip, from: Number(chip.dataset.index), x0: e.clientX, to: Number(chip.dataset.index) };
+    chip.classList.add('dragging');
+  });
+  chipsEl.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    drag.chip.style.transform = `translateX(${e.clientX - drag.x0}px)`;
+    drag.to = dropIndex(e.clientX);
+    // Rola a faixa quando o dedo chega perto das bordas
+    const r = chipsEl.getBoundingClientRect();
+    if (e.clientX < r.left + 30) chipsEl.scrollLeft -= 12;
+    else if (e.clientX > r.right - 30) chipsEl.scrollLeft += 12;
+    [...chipsEl.children].forEach((c, i) => {
+      const others = i > drag.from ? i - 1 : i; // índice entre as demais fichas
+      c.classList.toggle('drop-before', i !== drag.from && others === drag.to);
+      c.classList.toggle('drop-after', i !== drag.from && drag.to === participants.length - 1 && others === participants.length - 2);
+    });
+  });
+  const endDrag = () => {
+    if (!drag) return;
+    const { chip, from, to } = drag;
+    drag = null;
+    chip.classList.remove('dragging');
+    chip.style.transform = '';
+    [...chipsEl.children].forEach((c) => c.classList.remove('drop-before', 'drop-after'));
+    moveParticipant(from, to);
+  };
+  chipsEl.addEventListener('pointerup', endDrag);
+  chipsEl.addEventListener('pointercancel', () => {
+    if (!drag) return;
+    drag.to = drag.from;
+    endDrag();
+  });
+  reorderBtn.addEventListener('click', () => { reorder = !reorder; drawChips(); });
 
   function guessCard(w, p, title, subtitle) {
     const k = key(w.id, p.participant_id);
@@ -208,12 +307,13 @@ export async function renderOperation({ params, outlet }) {
     const base = uid('g');
     const inputs = {
       guessed_region: h('input', { id: `${base}-r`, type: 'text', list: 'dl-op-regions', maxlength: 150, autocomplete: 'off', value: v.guessed_region }),
-      guessed_vintage: h('input', { id: `${base}-v`, type: 'text', inputmode: 'numeric', maxlength: 4, placeholder: 'ano', autocomplete: 'off', value: v.guessed_vintage }),
       guessed_grape: h('input', { id: `${base}-g`, type: 'text', list: 'dl-op-grapes', maxlength: 200, autocomplete: 'off', value: v.guessed_grape }),
+      guessed_vintage: h('input', { id: `${base}-v`, type: 'text', inputmode: 'numeric', maxlength: 4, placeholder: 'ano', autocomplete: 'off', value: v.guessed_vintage }),
       guessed_price: h('input', { id: `${base}-p`, type: 'text', inputmode: 'decimal', placeholder: '0,00', autocomplete: 'off', value: v.guessed_price }),
       score: h('input', { id: `${base}-s`, type: 'text', inputmode: 'numeric', maxlength: 3, placeholder: `${formatNumber(t.score_min)}–${formatNumber(t.score_max)}`, autocomplete: 'off', value: v.score }),
-      notes: h('textarea', { id: `${base}-n`, rows: 1, maxlength: 2000, value: v.notes }),
     };
+    // Observações saíram do formulário (11/11/2026); as já gravadas são preservadas.
+    const keptNotes = saved.get(k)?.notes ?? null;
     const status = h('span', { class: 'save-state', role: 'status' });
     const card = h('div', { class: 'card guess-card', dataset: { key: k } },
       h('div', { class: 'guess-head' },
@@ -221,18 +321,17 @@ export async function renderOperation({ params, outlet }) {
         status),
       h('div', { class: 'guess-grid' },
         field('Região', inputs.guessed_region),
-        field('Safra', inputs.guessed_vintage),
         field('Uva', inputs.guessed_grape),
+        field('Safra (opcional)', inputs.guessed_vintage),
         field('Preço (R$)', inputs.guessed_price),
-        field(`Pontuação (${formatNumber(t.score_min)}–${formatNumber(t.score_max)})`, inputs.score),
-        h('div', { class: 'wide' }, field('Observações', inputs.notes))));
+        field(`Pontuação (${formatNumber(t.score_min)}–${formatNumber(t.score_max)})`, inputs.score)));
 
     const readValues = () => Object.fromEntries(Object.entries(inputs).map(([f, el]) => [f, el.value]));
 
     const onEdit = (delay) => {
       const raw = readValues();
       drafts.set(k, raw);
-      const parsed = parseGuess(raw, inputs);
+      const parsed = parseGuess(raw, inputs, keptNotes);
       if (!parsed) { saver.cancel(k); pending.delete(k); onSaveState(k, 'invalid'); return; }
       const payload = { wine_id: w.id, participant_id: p.participant_id, ...parsed, _raw: raw };
       pending.set(k, payload);
@@ -245,7 +344,7 @@ export async function renderOperation({ params, outlet }) {
         el.addEventListener('keydown', (e) => {
           if (e.key !== 'Enter') return;
           e.preventDefault();
-          const all = [...view.querySelectorAll('.guess-card input, .guess-card textarea')];
+          const all = [...view.querySelectorAll('.guess-card input')];
           all[all.indexOf(el) + 1]?.focus();
         });
       }
@@ -255,7 +354,7 @@ export async function renderOperation({ params, outlet }) {
     return card;
   }
 
-  function parseGuess(raw, inputs) {
+  function parseGuess(raw, inputs, notes) {
     let ok = true;
     const err = (el, msg) => {
       const e = document.getElementById(`${el.id}-err`);
@@ -276,7 +375,7 @@ export async function renderOperation({ params, outlet }) {
       guessed_grape: raw.guessed_grape.trim() || null,
       guessed_price: price,
       score,
-      notes: raw.notes.trim() || null,
+      notes,
     };
   }
 
@@ -367,6 +466,8 @@ export async function renderOperation({ params, outlet }) {
     h('div', { class: 'row-between' },
       h('div', { class: 'segmented', role: 'group', 'aria-label': 'Modo de preenchimento' }, modeBtns.participante, modeBtns.vinho),
       h('label', { class: 'checkbox small' }, revealBox, 'Mostrar nomes reais dos vinhos')),
+    reorderRow,
+    reorderHint,
     chipsEl,
     currentEl,
     cardsEl,

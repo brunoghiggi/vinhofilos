@@ -596,7 +596,9 @@ Adotadas a partir das propostas da seção 15. Todas podem ser revistas; as marc
 
 | Questão | Decisão na v1 | Onde muda |
 |---|---|---|
-| Controle do criador | Token de 24 bytes gerado no banco; só o hash SHA-256 é armazenado; validado em todas as funções RPC. Exportável (copiar) e importável em outro aparelho. | `supabase/schema.sql`, `tastings.js` |
+| Controle do criador | Token de 24 bytes gerado no banco; só o hash SHA-256 é armazenado; validado em todas as funções RPC. Exportável (copiar) e importável em outro aparelho. **Degustações mensais (11/11/2026):** nascem sem chave; o **primeiro que clicar em "Assumir organização"** recebe a chave (`claim_tasting`); depois disso, só com a chave. Sem dono, nenhuma operação do organizador é aceita (`_assert_creator` recusa hash nulo). | `supabase/schema.sql`, `tastings.js` |
+| Degustações mensais | **DEFINIDO (11/11/2026):** uma degustação por mês, criada automaticamente no **último domingo**, para os 12 meses do ano corrente (em dezembro, também os do ano seguinte). Nome "Degustação de <mês> de <ano>" (editável pelo organizador). Criadas por `ensure_monthly_tastings()`, chamada ao abrir a tela inicial (idempotente; índice único em `monthly_ref`). Não podem ser excluídas. A tela inicial lista as do ano com nome, data, organizadores e destaca a próxima. | `schema.sql`, `tastings.js` |
+| Organizadores | **DEFINIDO (11/11/2026):** escolhidos entre os participantes do cadastro (até 10), guardados em `tastings.organizer_ids`. **Qualquer pessoa** pode editá-los na página da degustação até ela ser finalizada (`set_tasting_organizers`). Organizador ≠ dono da chave: são independentes. | `schema.sql`, `tastings.js` |
 | Acesso aos dados | `tasting_wines`, `tasting_participants` e `wine_guesses` sem acesso direto pela chave anon; tudo via funções `SECURITY DEFINER`. | `schema.sql` |
 | Nome do encontro | Obrigatório. | |
 | Data | Opcional; editável até finalizar. | |
@@ -605,11 +607,11 @@ Adotadas a partir das propostas da seção 15. Todas podem ser revistas; as marc
 | Rankings | **DEFINIDO (09/11/2026):** o relatório mostra (1) ranking dos participantes por pontos de acerto e (2) ranking dos vinhos por nota média. Empates dividem a posição (1º, 1º, 3º). Vinhos sem nota ficam no fim, sem posição. Não há ranking acumulado entre degustações. | `reports.js`, `scoring.js` |
 | Regras de acerto | **DEFINIDAS (10/11/2026):** confirmadas pelo responsável. 1 ponto por item, até 4 por vinho. **Região e uva:** acerta se um texto contém o outro, ignorando acentos/maiúsculas (palpites com menos de 3 letras só valem se idênticos). **Safra:** exata. **Preço:** até 15% de diferença do **preço cheio**. Item sem dado real (ex.: safra não informada) não pontua para ninguém e sai do total possível. Calculado no relatório, a partir dos dados revelados. | `scoring.js` (`RULES`) |
 | Participantes durante andamento | Lista oculta para o público (só o nº de vinhos é exibido). | `get_tasting_public` |
-| Ordem de preenchimento | Ordem de seleção, com ajuste ↑ ↓ e arrastar. Registro pode ser **por participante** ou **por vinho** (alternável). | `guesses.js` |
-| Palpite "completo" | Região, safra, uva, preço e pontuação preenchidos. Finalizar com pendências é permitido, após confirmação que lista as pendências. | `guesses.js` |
+| Ordem de preenchimento | Ordem de seleção, com ajuste ↑ ↓ e arrastar. Registro pode ser **por participante** ou **por vinho** (alternável). **Durante a degustação (11/11/2026):** na tela de palpites, botão "Reordenar" permite arrastar os nomes para a esquerda/direita (mouse ou toque; setas do teclado também); a ordem é salva na hora. | `guesses.js` |
+| Palpite "completo" | **Alterado (11/11/2026):** região, uva, preço e pontuação preenchidos; **safra é opcional**. Formulário na ordem Região, Uva, Safra, Preço, Pontuação; campo **Observações removido** do registro de palpites e do relatório/CSV (observações já gravadas são preservadas no banco). Safra continua valendo 1 ponto quando acertada. Finalizar com pendências é permitido, após confirmação que lista as pendências. | `guesses.js`, `reports.js` |
 | Edição durante andamento | Vinhos e participantes podem ser ajustados; remover vinho/participante apaga os palpites dele (com aviso). | `save_tasting`, `set_tasting_participants` |
 | Correção após finalizar | Bloqueada (irreversível). Reabertura não implementada. | |
-| Exclusão | Participantes: só inativação. Degustações: exclusão apenas em rascunho, pelo criador. | |
+| Exclusão | Participantes: só inativação. Degustações: exclusão apenas em rascunho, pelo criador; degustações mensais não podem ser excluídas. | |
 | Sigilo na tela de operação | Nomes reais dos vinhos ocultos por padrão (opção "Mostrar nomes reais"), para não revelar a quem vê a tela. | `guesses.js` |
 | Relatório | Página web com abas por vinho/por participante, impressão/PDF pelo navegador e exportação CSV (`;`, UTF-8 com BOM). | `reports.js` |
 | Modo demonstração | Sem Supabase configurado, o app usa um backend local (localStorage) que reproduz as regras do banco — apenas para testes. | `demo-backend.js` |

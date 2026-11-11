@@ -13,15 +13,34 @@ import { guessCompleteness } from './guesses.js';
 // Componentes
 // ---------------------------------------------------------------------
 
-function tastingList(items, mine = new Set()) {
-  return h('ul', { class: 'list' }, items.map((t) => h('li', {},
-    h('a', { class: 'tasting-card', href: `#/degustacao/${t.id}` },
-      h('div', { class: 'tc-main' },
-        h('strong', {}, t.name),
-        h('span', { class: 'muted small' }, formatDate(t.tasting_date))),
-      h('div', { class: 'tc-meta' },
-        mine.has(t.id) ? h('span', { class: 'badge badge-mine' }, 'Você organiza') : null,
-        statusBadge(t.status))))));
+/** Data de hoje no fuso da confraria, em ISO (AAAA-MM-DD). */
+const todayIso = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+
+/** "Ana, Bia" a partir dos ids; names: Map id → nome. */
+function organizerNames(ids, names) {
+  return (ids || []).map((id) => names.get(id)).filter(Boolean).join(', ');
+}
+
+/**
+ * Lista de degustações. Com `names` (Map id → nome), mostra os organizadores;
+ * `nextId` destaca a próxima degustação mensal.
+ */
+function tastingList(items, mine = new Set(), { names = null, nextId = null } = {}) {
+  return h('ul', { class: 'list' }, items.map((t) => {
+    const orgs = names ? organizerNames(t.organizer_ids, names) : '';
+    return h('li', {},
+      h('a', { class: `tasting-card${t.id === nextId ? ' is-next' : ''}`, href: `#/degustacao/${t.id}` },
+        h('div', { class: 'tc-main' },
+          h('strong', {}, t.name),
+          h('span', { class: 'muted small' }, formatDate(t.tasting_date)),
+          names
+            ? h('span', { class: 'small tc-orgs' }, orgs ? `Organizadores: ${orgs}` : 'Organizadores a definir')
+            : null),
+        h('div', { class: 'tc-meta' },
+          t.id === nextId ? h('span', { class: 'badge badge-next' }, 'Próxima') : null,
+          mine.has(t.id) ? h('span', { class: 'badge badge-mine' }, 'Você organiza') : null,
+          statusBadge(t.status))));
+  }));
 }
 
 /** Diálogo exibido logo após criar: explica e permite copiar a chave. */
@@ -49,11 +68,24 @@ export async function showTokenDialog(token, { saved = true } = {}) {
 // ---------------------------------------------------------------------
 
 export async function renderHome({ outlet }) {
-  const tastings = await api.listTastings();
+  // Cria as degustações mensais que faltarem (idempotente no banco).
+  try { await api.ensureMonthlyTastings(); } catch (err) { if (err.network) throw err; }
+  const [tastings, people] = await Promise.all([api.listTastings(), api.listParticipants()]);
+  const names = new Map(people.map((p) => [p.id, p.name]));
   const mine = new Set(tokenStore.ids());
-  const myOpen = tastings.filter((t) => mine.has(t.id) && t.status !== 'finalizada');
-  const open = tastings.filter((t) => t.status !== 'finalizada' && !mine.has(t.id)).slice(0, 8);
-  const finished = tastings.filter((t) => t.status === 'finalizada').slice(0, 6);
+  const today = todayIso();
+  const year = today.slice(0, 4);
+
+  // Mensais do ano corrente em diante, agrupadas por ano
+  const monthly = tastings.filter((t) => t.monthly_ref && t.monthly_ref.slice(0, 4) >= year)
+    .sort((a, b) => a.monthly_ref.localeCompare(b.monthly_ref));
+  const next = monthly.find((t) => t.status !== 'finalizada' && (t.tasting_date || '') >= today);
+  const years = [...new Set(monthly.map((t) => t.monthly_ref.slice(0, 4)))];
+
+  const others = tastings.filter((t) => !t.monthly_ref);
+  const myOpen = others.filter((t) => mine.has(t.id) && t.status !== 'finalizada');
+  const open = others.filter((t) => t.status !== 'finalizada' && !mine.has(t.id)).slice(0, 8);
+  const finished = tastings.filter((t) => t.status === 'finalizada' && !monthly.includes(t)).slice(0, 6);
 
   outlet.append(
     h('section', { class: 'hero' },
@@ -63,11 +95,16 @@ export async function renderHome({ outlet }) {
         h('a', { class: 'btn btn-primary btn-lg', href: '#/degustacao/nova' }, 'Criar degustação'),
         h('a', { class: 'btn btn-secondary btn-lg', href: '#/participantes' }, 'Participantes'),
         h('a', { class: 'btn btn-secondary btn-lg', href: '#/historico' }, 'Histórico'))),
-    myOpen.length ? section('Suas degustações em aberto', tastingList(myOpen, mine)) : null,
-    section('Em preparação ou andamento', open.length ? tastingList(open, mine) : emptyState('Nenhuma outra degustação em aberto.')),
-    section('Finalizadas recentemente',
-      finished.length ? tastingList(finished, mine) : emptyState('Ainda não há degustações finalizadas.'),
-      finished.length ? h('p', { class: 'small' }, h('a', { href: '#/historico' }, 'Ver histórico completo →')) : null),
+    years.map((y) => section(`Degustações de ${y}`,
+      h('p', { class: 'small muted' }, 'Uma por mês, sempre no último domingo.'),
+      tastingList(monthly.filter((t) => t.monthly_ref.startsWith(y)), mine, { names, nextId: next?.id }))),
+    myOpen.length ? section('Suas outras degustações em aberto', tastingList(myOpen, mine, { names })) : null,
+    open.length ? section('Outras em preparação ou andamento', tastingList(open, mine, { names })) : null,
+    finished.length
+      ? section('Outras finalizadas recentemente',
+        tastingList(finished, mine),
+        h('p', { class: 'small' }, h('a', { href: '#/historico' }, 'Ver histórico completo →')))
+      : null,
   );
 }
 
@@ -138,11 +175,83 @@ function headBlock(t, extra) {
   );
 }
 
+/** Organizadores: visíveis a todos; qualquer pessoa edita até finalizar. */
+function organizersBlock(t, organizers) {
+  const list = h('p', {}, organizers.length
+    ? organizers.map((o) => participantName(o)).join(', ')
+    : h('span', { class: 'muted' }, 'A definir'));
+  const editBtn = t.status === 'finalizada' ? null
+    : h('button', { type: 'button', class: 'btn btn-secondary btn-sm' }, 'Editar organizadores');
+  editBtn?.addEventListener('click', () => editOrganizers(t, organizers, editBtn));
+  return h('section', { class: 'card stack' },
+    h('div', { class: 'row-between' }, h('h2', { style: 'margin:0' }, 'Organizadores'), editBtn),
+    list);
+}
+
+async function editOrganizers(t, current, btn) {
+  let people;
+  try { people = await api.listParticipants(); } catch (err) { toast(err.message, 'error'); return; }
+  const chosen = new Set(current.map((o) => o.id));
+  // Ativos + os já escolhidos (mesmo que inativados depois)
+  const options = people.filter((p) => p.active || chosen.has(p.id));
+  if (!options.length) {
+    toast('Cadastre participantes antes de escolher os organizadores.', 'error');
+    return;
+  }
+  const boxes = options.map((p) => {
+    const cb = h('input', { type: 'checkbox', value: p.id, checked: chosen.has(p.id) });
+    return { p, cb, el: h('label', { class: 'checkbox' }, cb, participantName(p)) };
+  });
+  const ok = await confirmDialog({
+    title: 'Organizadores',
+    content: h('div', { class: 'stack' },
+      h('p', { class: 'small muted' }, 'Escolha quem organiza esta degustação (até 10).'),
+      h('div', { class: 'org-options' }, boxes.map((b) => b.el))),
+    confirmText: 'Salvar',
+  });
+  if (!ok) return;
+  // Mantém a ordem anterior e acrescenta os novos no fim
+  const picked = boxes.filter((b) => b.cb.checked).map((b) => b.p.id);
+  const ids = [...current.map((o) => o.id).filter((id) => picked.includes(id)),
+    ...picked.filter((id) => !chosen.has(id))];
+  await busy(btn, async () => {
+    try { await api.setTastingOrganizers(t.id, ids); toast('Organizadores atualizados.', 'success'); refresh(); }
+    catch (err) { toast(err.message, 'error'); }
+  });
+}
+
+/** Degustação sem organizador com chave: o primeiro que assumir recebe a chave. */
+function claimBlock(t) {
+  const btn = h('button', { type: 'button', class: 'btn btn-primary' }, 'Assumir organização');
+  btn.addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Assumir a organização?',
+      message: 'Este navegador recebe a chave de controle para cadastrar os vinhos, escolher os participantes e registrar os palpites. Só uma pessoa pode assumir; depois, outros aparelhos precisam da chave.',
+      confirmText: 'Assumir',
+    });
+    if (!ok) return;
+    await busy(btn, async () => {
+      try {
+        const { token } = await api.claimTasting(t.id);
+        const saved = tokenStore.set(t.id, token);
+        await showTokenDialog(token, { saved });
+        refresh();
+      } catch (err) { toast(err.message, 'error'); refresh(); }
+    });
+  });
+  return h('section', { class: 'card stack' },
+    h('h2', { style: 'margin:0' }, 'Sem organizador com chave'),
+    h('p', {}, 'Ninguém assumiu esta degustação ainda. Quem for conduzir o encontro deve assumir para poder cadastrar vinhos e registrar os palpites.'),
+    btn);
+}
+
 function renderPublic(outlet, pub) {
   const t = pub.tasting;
   outlet.append(
     headBlock(t),
     t.description ? h('p', {}, t.description) : null,
+    organizersBlock(t, pub.organizers || []),
+    !t.claimed && t.status !== 'finalizada' ? claimBlock(t) : null,
     pub.revealed
       ? h('div', { class: 'card stack' },
         h('p', {}, 'Degustação finalizada — vinhos e palpites foram revelados.'),
@@ -150,7 +259,7 @@ function renderPublic(outlet, pub) {
       : h('div', { class: 'card stack' },
         h('p', {}, h('strong', {}, `${pub.wine_count} vinho(s)`), ' nesta degustação.'),
         h('p', { class: 'muted' }, 'Os dados reais dos vinhos, os participantes e os palpites ficam ocultos até a finalização.')),
-    pub.revealed ? null : importTokenBlock(t.id),
+    pub.revealed || !t.claimed ? null : importTokenBlock(t.id),
   );
 }
 
@@ -230,6 +339,7 @@ function renderAdmin(outlet, data, token) {
   outlet.append(
     headBlock(t, h('span', { class: 'badge badge-mine' }, 'Você organiza')),
     t.description ? h('p', {}, t.description) : null,
+    organizersBlock(t, data.organizers || []),
     actions,
     section(`Vinhos (${wines.length})`,
       hidden ? h('p', { class: 'notice notice-private small' }, 'Dados reais visíveis apenas para você até a finalização.') : null,
@@ -265,7 +375,7 @@ function keyBlock(t, token) {
       }, 'Remover deste navegador')),
     box,
   ];
-  if (t.status === 'rascunho') {
+  if (t.status === 'rascunho' && !t.monthly_ref) {
     const del = h('button', { type: 'button', class: 'btn btn-danger-outline btn-sm' }, 'Excluir degustação');
     del.addEventListener('click', async () => {
       if (!await confirmDialog({ title: 'Excluir degustação?', message: `"${t.name}" e seus vinhos serão apagados definitivamente. Esta ação não pode ser desfeita.`, confirmText: 'Excluir', danger: true })) return;

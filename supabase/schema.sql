@@ -96,6 +96,19 @@ create table if not exists public.wine_guesses (
 );
 create index if not exists wine_guesses_tasting_idx on public.wine_guesses (tasting_id);
 
+-- Degustações mensais automáticas e organizadores (11/11/2026)
+--   monthly_ref        1º dia do mês da degustação automática (uma por mês)
+--   organizer_ids      organizadores (participantes do cadastro), editáveis por qualquer pessoa
+--   creator_token_hash nulo = ainda sem organizador com chave; qualquer
+--                      pessoa pode assumir (claim_tasting) e recebe a chave
+alter table public.tastings alter column creator_token_hash drop not null;
+alter table public.tastings add column if not exists monthly_ref date;
+alter table public.tastings add column if not exists organizer_ids uuid[] not null default '{}';
+alter table public.tastings add column if not exists claimed boolean
+  generated always as (creator_token_hash is not null) stored;
+create unique index if not exists tastings_monthly_ref_key
+  on public.tastings (monthly_ref) where monthly_ref is not null;
+
 -- ---------------------------------------------------------------------
 -- Permissões e RLS
 -- ---------------------------------------------------------------------
@@ -124,7 +137,7 @@ create policy participants_update on public.participants for update to anon, aut
 
 -- tastings: somente colunas públicas (o hash do token NÃO é concedido)
 grant select (id, name, tasting_date, description, status, score_min, score_max,
-              created_at, started_at, finished_at)
+              created_at, started_at, finished_at, monthly_ref, organizer_ids, claimed)
   on public.tastings to anon, authenticated;
 
 drop policy if exists tastings_select on public.tastings;
@@ -149,6 +162,10 @@ begin
   select * into t from public.tastings where id = p_tasting for update;
   if not found then
     raise exception 'Degustação não encontrada.';
+  end if;
+  -- Sem esta checagem, "hash nulo <> x" daria NULL e aceitaria qualquer chave.
+  if t.creator_token_hash is null then
+    raise exception 'Esta degustação ainda não tem organizador. Use "Assumir organização" na página dela.';
   end if;
   if p_token is null or length(p_token) < 32
      or t.creator_token_hash <> encode(digest(p_token, 'sha256'), 'hex') then
@@ -180,6 +197,30 @@ as $$
       select jsonb_agg(to_jsonb(g))
       from public.wine_guesses g where g.tasting_id = p_tasting), '[]'::jsonb)
   );
+$$;
+
+-- Organizadores na ordem gravada, com nome (participantes nunca são excluídos).
+create or replace function public._organizers(p_ids uuid[])
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'name', p.name, 'nickname', p.nickname)
+                            order by u.ord), '[]'::jsonb)
+  from unnest(coalesce(p_ids, '{}')) with ordinality as u(id, ord)
+  join public.participants p on p.id = u.id;
+$$;
+
+-- Último domingo do mês que contém p_month.
+create or replace function public._last_sunday(p_month date)
+returns date
+language sql
+immutable
+as $$
+  select d - extract(dow from d)::int
+  from (select (date_trunc('month', p_month) + interval '1 month - 1 day')::date as d) x;
 $$;
 
 -- Substitui a lista de vinhos: atualiza os que têm id, cria os novos e
@@ -273,6 +314,7 @@ begin
   end if;
   result := jsonb_build_object(
     'tasting', to_jsonb(t) - 'creator_token_hash',
+    'organizers', public._organizers(t.organizer_ids),
     'wine_count', (select count(*) from public.tasting_wines where tasting_id = t.id),
     'revealed', t.status = 'finalizada'
   );
@@ -294,7 +336,8 @@ declare
   t public.tastings;
 begin
   t := public._assert_creator(p_tasting, p_token);
-  return jsonb_build_object('tasting', to_jsonb(t) - 'creator_token_hash', 'revealed', true)
+  return jsonb_build_object('tasting', to_jsonb(t) - 'creator_token_hash', 'revealed', true,
+                            'organizers', public._organizers(t.organizer_ids))
          || public._tasting_details(t.id);
 end;
 $$;
@@ -395,6 +438,9 @@ begin
   t := public._assert_creator(p_tasting, p_token);
   if t.status <> 'rascunho' then
     raise exception 'Somente degustações em rascunho podem ser excluídas.';
+  end if;
+  if t.monthly_ref is not null then
+    raise exception 'A degustação mensal não pode ser excluída (seria recriada automaticamente).';
   end if;
   delete from public.tastings where id = p_tasting;
 end;
@@ -544,6 +590,101 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------
+-- Degustações mensais e organizadores
+-- ---------------------------------------------------------------------
+
+-- Garante uma degustação por mês, no último domingo, para todos os meses
+-- do ano corrente (em dezembro, também os do ano seguinte). Idempotente:
+-- chamada pelo app ao abrir a tela inicial. Retorna quantas criou.
+create or replace function public.ensure_monthly_tastings()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_today   date := (now() at time zone 'America/Sao_Paulo')::date;
+  v_year    int  := extract(year from v_today)::int;
+  v_last    date;
+  v_month   date;
+  v_created int := 0;
+  v_rows    int;
+  v_names   text[] := array['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho',
+                            'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+begin
+  v_last := make_date(case when extract(month from v_today) = 12 then v_year + 1 else v_year end, 12, 1);
+  for v_month in
+    select gs::date from generate_series(make_date(v_year, 1, 1), v_last, interval '1 month') as gs
+  loop
+    insert into public.tastings (name, tasting_date, status, score_min, score_max, creator_token_hash, monthly_ref)
+    values (format('Degustação de %s de %s', v_names[extract(month from v_month)::int], extract(year from v_month)::int),
+            public._last_sunday(v_month), 'rascunho', 50, 100, null, v_month)
+    on conflict (monthly_ref) where monthly_ref is not null do nothing;
+    get diagnostics v_rows = row_count;
+    v_created := v_created + v_rows;
+  end loop;
+  return v_created;
+end;
+$$;
+
+-- Assume uma degustação sem organizador com chave: o primeiro que chamar
+-- recebe a chave (devolvida uma única vez); as chamadas seguintes falham.
+create or replace function public.claim_tasting(p_tasting uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_token text := encode(gen_random_bytes(24), 'hex');
+begin
+  update public.tastings
+     set creator_token_hash = encode(digest(v_token, 'sha256'), 'hex')
+   where id = p_tasting and creator_token_hash is null and status <> 'finalizada';
+  if not found then
+    if not exists (select 1 from public.tastings where id = p_tasting) then
+      raise exception 'Degustação não encontrada.';
+    end if;
+    raise exception 'Esta degustação já tem um organizador com a chave de controle.';
+  end if;
+  return jsonb_build_object('id', p_tasting, 'token', v_token);
+end;
+$$;
+
+-- Organizadores: qualquer pessoa pode alterar até a degustação ser finalizada.
+create or replace function public.set_tasting_organizers(p_tasting uuid, p_ids uuid[])
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  t public.tastings;
+begin
+  select * into t from public.tastings where id = p_tasting for update;
+  if not found then
+    raise exception 'Degustação não encontrada.';
+  end if;
+  if t.status = 'finalizada' then
+    raise exception 'Degustação finalizada não pode ser alterada.';
+  end if;
+  p_ids := coalesce(p_ids, '{}');
+  if cardinality(p_ids) > 10 then
+    raise exception 'No máximo 10 organizadores.';
+  end if;
+  if cardinality(p_ids) <> (select count(distinct x) from unnest(p_ids) as x) then
+    raise exception 'Um organizador não pode aparecer duas vezes.';
+  end if;
+  if exists (select 1 from unnest(p_ids) as x
+             where not exists (select 1 from public.participants p where p.id = x)) then
+    raise exception 'Participante não encontrado.';
+  end if;
+  update public.tastings set organizer_ids = p_ids where id = p_tasting;
+  return public._organizers(p_ids);
+end;
+$$;
+
+-- ---------------------------------------------------------------------
 -- Execução das funções
 -- ---------------------------------------------------------------------
 
@@ -560,3 +701,9 @@ grant execute on function public.set_tasting_participants(uuid, text, uuid[])   
 grant execute on function public.start_tasting(uuid, text)                                      to anon, authenticated;
 grant execute on function public.save_guess(uuid, text, uuid, uuid, text, integer, text, numeric, numeric, text) to anon, authenticated;
 grant execute on function public.finish_tasting(uuid, text)                                     to anon, authenticated;
+
+revoke execute on function public._organizers(uuid[])          from public, anon, authenticated;
+revoke execute on function public._last_sunday(date)           from public, anon, authenticated;
+grant execute on function public.ensure_monthly_tastings()                 to anon, authenticated;
+grant execute on function public.claim_tasting(uuid)                       to anon, authenticated;
+grant execute on function public.set_tasting_organizers(uuid, uuid[])      to anon, authenticated;

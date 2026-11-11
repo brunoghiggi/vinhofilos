@@ -114,29 +114,27 @@ export async function renderReport({ params, outlet }) {
     h('h3', {}, `Vinho ${w.position} · ${w.name}`),
     wineFacts(w),
     h('div', { class: 'table-wrap' }, h('table', { class: 'rtable' },
-      h('thead', {}, h('tr', {}, ['Participante', 'Região', 'Safra', 'Uva', 'Preço', 'Acertos', 'Nota', 'Observações'].map((c) => h('th', { scope: 'col' }, c)))),
+      h('thead', {}, h('tr', {}, ['Participante', 'Região', 'Uva', 'Safra', 'Preço', 'Acertos', 'Nota'].map((c) => h('th', { scope: 'col' }, c)))),
       h('tbody', {},
         h('tr', { class: 'real-row' },
           td('Participante', 'Dados reais'),
           td('Região', formatText(w.region)),
-          td('Safra', formatVintage(w.vintage)),
           td('Uva', formatText(w.grape)),
+          td('Safra', formatVintage(w.vintage)),
           td('Preço', h('span', { class: 'nowrap' }, formatMoney(w.price)), isBlank(w.discounted_price) ? null : h('span', { class: 'cmp' }, `desc.: ${formatMoney(w.discounted_price)}`)),
           td('Acertos', '—'),
-          td('Nota', '—'),
-          td('Observações', '')),
+          td('Nota', '—')),
         participants.map((p) => {
           const x = g(w, p);
           const s = scoreGuess(x, w);
           return h('tr', {},
             td('Participante', h('strong', {}, `${p.position}. ${participantName(p)}`)),
             td('Região', formatText(x.guessed_region), hit(s.items.region)),
-            td('Safra', formatText(x.guessed_vintage), vintageDiff(x.guessed_vintage, w.vintage), hit(s.items.vintage)),
             td('Uva', formatText(x.guessed_grape), hit(s.items.grape)),
+            td('Safra', formatText(x.guessed_vintage), vintageDiff(x.guessed_vintage, w.vintage), hit(s.items.vintage)),
             td('Preço', h('span', { class: 'nowrap' }, formatMoney(x.guessed_price)), priceCompare(x.guessed_price, w), hit(s.items.price)),
             td('Acertos', h('strong', {}, `${s.points}/${s.max}`)),
-            td('Nota', h('strong', {}, formatNumber(x.score))),
-            td('Observações', formatText(x.notes)));
+            td('Nota', h('strong', {}, formatNumber(x.score))));
         })))))));
 
   // ----- por participante
@@ -150,19 +148,18 @@ export async function renderReport({ params, outlet }) {
           h('strong', {}, `${rankLabel(r.rank)} lugar · ${r.points} de ${r.max} pontos`),
           h('span', { class: 'muted' }, s ? ` · média das notas dadas: ${formatNumber(s.avg)}` : ' · sem notas'))),
       h('div', { class: 'table-wrap' }, h('table', { class: 'rtable' },
-        h('thead', {}, h('tr', {}, ['Vinho', 'Região', 'Safra', 'Uva', 'Preço', 'Acertos', 'Nota', 'Observações'].map((c) => h('th', { scope: 'col' }, c)))),
+        h('thead', {}, h('tr', {}, ['Vinho', 'Região', 'Uva', 'Safra', 'Preço', 'Acertos', 'Nota'].map((c) => h('th', { scope: 'col' }, c)))),
         h('tbody', {}, wines.map((w) => {
           const x = g(w, p);
           const sc = scoreGuess(x, w);
           return h('tr', {},
             td('Vinho', h('strong', {}, `${w.position}. ${w.name}`)),
             td('Região', formatText(x.guessed_region), h('span', { class: 'cmp' }, `real: ${formatText(w.region)}`), hit(sc.items.region)),
-            td('Safra', formatText(x.guessed_vintage), h('span', { class: 'cmp' }, `real: ${formatVintage(w.vintage)}`), vintageDiff(x.guessed_vintage, w.vintage), hit(sc.items.vintage)),
             td('Uva', formatText(x.guessed_grape), h('span', { class: 'cmp' }, `real: ${formatText(w.grape)}`), hit(sc.items.grape)),
+            td('Safra', formatText(x.guessed_vintage), h('span', { class: 'cmp' }, `real: ${formatVintage(w.vintage)}`), vintageDiff(x.guessed_vintage, w.vintage), hit(sc.items.vintage)),
             td('Preço', h('span', { class: 'nowrap' }, formatMoney(x.guessed_price)), h('span', { class: 'cmp' }, `real: ${formatMoney(w.price)}`), priceCompare(x.guessed_price, w), hit(sc.items.price)),
             td('Acertos', h('strong', {}, `${sc.points}/${sc.max}`)),
-            td('Nota', h('strong', {}, formatNumber(x.score))),
-            td('Observações', formatText(x.notes)));
+            td('Nota', h('strong', {}, formatNumber(x.score))));
         })))));
   }));
 
@@ -219,8 +216,8 @@ export async function renderReport({ params, outlet }) {
 
 function exportCsv(t, wines, participants, g) {
   const header = ['degustacao', 'data', 'ordem_vinho', 'vinho', 'pais', 'regiao_real', 'uva_real', 'safra_real',
-    'preco_cheio', 'preco_desconto', 'ordem_participante', 'participante', 'regiao_palpite', 'safra_palpite',
-    'uva_palpite', 'preco_palpite', 'pontuacao', 'observacoes', 'pontos_acerto', 'pontos_possiveis'];
+    'preco_cheio', 'preco_desconto', 'ordem_participante', 'participante', 'regiao_palpite', 'uva_palpite',
+    'safra_palpite', 'preco_palpite', 'pontuacao', 'pontos_acerto', 'pontos_possiveis'];
   const num = (v) => (isBlank(v) ? '' : String(v).replace('.', ','));
   const rows = [];
   for (const w of wines) {
@@ -228,8 +225,8 @@ function exportCsv(t, wines, participants, g) {
       const x = g(w, p);
       const s = scoreGuess(x, w);
       rows.push([t.name, t.tasting_date || '', w.position, w.name, w.country, w.region, w.grape, w.vintage,
-        num(w.price), num(w.discounted_price), p.position, participantName(p), x.guessed_region, x.guessed_vintage,
-        x.guessed_grape, num(x.guessed_price), num(x.score), x.notes, s.points, s.max]);
+        num(w.price), num(w.discounted_price), p.position, participantName(p), x.guessed_region, x.guessed_grape,
+        x.guessed_vintage, num(x.guessed_price), num(x.score), s.points, s.max]);
     }
   }
   const esc = (v) => {

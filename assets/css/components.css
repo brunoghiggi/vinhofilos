@@ -161,7 +161,7 @@ legend { padding: 0; }
 .guess-head h3 { margin: 0; }
 .guess-grid { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
 .guess-grid .wide { grid-column: 1 / -1; }
-@media (min-width: 720px) { .guess-grid { grid-template-columns: 2fr 1fr 2fr 1fr 1fr; } .guess-grid .wide { grid-column: 1 / -1; } }
+@media (min-width: 720px) { .guess-grid { grid-template-columns: 2fr 2fr 1fr 1fr 1fr; } .guess-grid .wide { grid-column: 1 / -1; } }
 .save-state { font-size: .82rem; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
 .save-state.saved { color: var(--ok); }
 .save-state.error, .save-state.invalid { color: var(--danger); font-weight: 600; }
@@ -231,3 +231,16 @@ legend { padding: 0; }
   .page-break { break-before: page; }
 }
 .print-only { display: none; }
+
+/* Degustações mensais e organizadores (11/11/2026) */
+.tasting-card .tc-orgs { color: var(--text); opacity: .85; }
+.tasting-card.is-next { border-color: var(--wine); box-shadow: 0 0 0 1px var(--wine) inset; }
+.badge-next { background: var(--wine); color: #fff; }
+.org-options { display: flex; flex-direction: column; max-height: 50vh; overflow-y: auto; }
+@media (prefers-color-scheme: dark) { .badge-next { color: #1b0c11; } }
+
+/* Reordenar participantes na operação (11/11/2026) */
+.chips.reorder .chip { touch-action: none; cursor: grab; user-select: none; border-style: dashed; }
+.chips.reorder .chip.dragging { cursor: grabbing; position: relative; z-index: 2; opacity: .9; box-shadow: 0 4px 14px rgba(0,0,0,.25); transition: none; }
+.chips.reorder .chip.drop-before { box-shadow: -4px 0 0 var(--wine); }
+.chips.reorder .chip.drop-after { box-shadow: 4px 0 0 var(--wine); }

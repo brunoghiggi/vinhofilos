@@ -42,7 +42,31 @@ function num(v, label, { int = false, min = 0, max = 1e9 } = {}) {
   return n;
 }
 
-const publicTasting = (t) => { const c = clone(t); delete c.creator_token_hash; return c; };
+const publicTasting = (t) => {
+  const c = clone(t);
+  c.claimed = !!c.creator_token_hash;
+  c.organizer_ids = c.organizer_ids || [];
+  c.monthly_ref = c.monthly_ref || null;
+  delete c.creator_token_hash;
+  return c;
+};
+
+function organizers(db, ids) {
+  return (ids || []).map((id) => db.participants.find((p) => p.id === id)).filter(Boolean)
+    .map((p) => ({ id: p.id, name: p.name, nickname: p.nickname }));
+}
+
+const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho',
+  'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+/** Último domingo do mês (m: 0–11), em ISO. */
+function lastSunday(y, m) {
+  const d = new Date(Date.UTC(y, m + 1, 0));
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+  return d.toISOString().slice(0, 10);
+}
+
+const newToken = () => [...crypto.getRandomValues(new Uint8Array(24))].map((n) => n.toString(16).padStart(2, '0')).join('');
 
 function details(db, id) {
   return clone({
@@ -59,6 +83,7 @@ function details(db, id) {
 async function assertCreator(db, id, token) {
   const t = db.tastings.find((x) => x.id === id);
   if (!t) fail('Degustação não encontrada.');
+  if (!t.creator_token_hash) fail('Esta degustação ainda não tem organizador. Use "Assumir organização" na página dela.');
   if (!token || token.length < 32 || t.creator_token_hash !== await sha256(token)) {
     fail('Chave de controle inválida para esta degustação.');
   }
@@ -95,7 +120,7 @@ function replaceWines(db, tastingId, wines) {
 }
 
 function adminView(db, t) {
-  return { tasting: publicTasting(t), revealed: true, ...details(db, t.id) };
+  return { tasting: publicTasting(t), revealed: true, organizers: organizers(db, t.organizer_ids), ...details(db, t.id) };
 }
 
 export function createDemoBackend() {
@@ -127,7 +152,7 @@ export function createDemoBackend() {
 
     getTastingPublic: (id) => q((db) => {
       const t = db.tastings.find((x) => x.id === id) || fail('Degustação não encontrada.');
-      const out = { tasting: publicTasting(t), wine_count: db.wines.filter((w) => w.tasting_id === id).length, revealed: t.status === 'finalizada' };
+      const out = { tasting: publicTasting(t), organizers: organizers(db, t.organizer_ids), wine_count: db.wines.filter((w) => w.tasting_id === id).length, revealed: t.status === 'finalizada' };
       return out.revealed ? { ...out, ...details(db, id) } : out;
     }),
 
@@ -136,12 +161,11 @@ export function createDemoBackend() {
     createTasting: (d) => tx(async (db) => {
       if (!text(d.name)) fail('O nome da degustação é obrigatório.');
       const [min, max] = [50, 100]; // escala fixa da confraria
-      const bytes = crypto.getRandomValues(new Uint8Array(24));
-      const token = [...bytes].map((n) => n.toString(16).padStart(2, '0')).join('');
+      const token = newToken();
       const t = {
         id: uuid(), name: text(d.name), tasting_date: d.tasting_date || null, description: text(d.description),
         status: 'rascunho', score_min: min, score_max: max, creator_token_hash: await sha256(token),
-        created_at: now(), started_at: null, finished_at: null,
+        created_at: now(), started_at: null, finished_at: null, monthly_ref: null, organizer_ids: [],
       };
       db.tastings.push(t);
       replaceWines(db, t.id, d.wines);
@@ -165,6 +189,7 @@ export function createDemoBackend() {
     deleteTasting: (id, token) => tx(async (db) => {
       const t = await assertCreator(db, id, token);
       if (t.status !== 'rascunho') fail('Somente degustações em rascunho podem ser excluídas.');
+      if (t.monthly_ref) fail('A degustação mensal não pode ser excluída (seria recriada automaticamente).');
       db.tastings = db.tastings.filter((x) => x.id !== id);
       db.wines = db.wines.filter((x) => x.tasting_id !== id);
       db.presence = db.presence.filter((x) => x.tasting_id !== id);
@@ -216,6 +241,45 @@ export function createDemoBackend() {
         db.guesses.push(existing);
       }
       return existing;
+    }),
+
+    ensureMonthlyTastings: () => tx((db) => {
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+      const [y, m] = today.split('-').map(Number);
+      const lastYear = m === 12 ? y + 1 : y;
+      let created = 0;
+      for (let yy = y; yy <= lastYear; yy++) {
+        for (let mm = 0; mm < 12; mm++) {
+          const ref = `${yy}-${String(mm + 1).padStart(2, '0')}-01`;
+          if (db.tastings.some((t) => t.monthly_ref === ref)) continue;
+          db.tastings.push({
+            id: uuid(), name: `Degustação de ${MONTHS[mm]} de ${yy}`, tasting_date: lastSunday(yy, mm), description: null,
+            status: 'rascunho', score_min: 50, score_max: 100, creator_token_hash: null,
+            created_at: now(), started_at: null, finished_at: null, monthly_ref: ref, organizer_ids: [],
+          });
+          created++;
+        }
+      }
+      return created;
+    }),
+
+    claimTasting: (id) => tx(async (db) => {
+      const t = db.tastings.find((x) => x.id === id) || fail('Degustação não encontrada.');
+      if (t.creator_token_hash || t.status === 'finalizada') fail('Esta degustação já tem um organizador com a chave de controle.');
+      const token = newToken();
+      t.creator_token_hash = await sha256(token);
+      return { id, token };
+    }),
+
+    setTastingOrganizers: (id, ids) => tx((db) => {
+      const t = db.tastings.find((x) => x.id === id) || fail('Degustação não encontrada.');
+      if (t.status === 'finalizada') fail('Degustação finalizada não pode ser alterada.');
+      ids = ids || [];
+      if (ids.length > 10) fail('No máximo 10 organizadores.');
+      if (new Set(ids).size !== ids.length) fail('Um organizador não pode aparecer duas vezes.');
+      if (ids.some((pid) => !db.participants.some((p) => p.id === pid))) fail('Participante não encontrado.');
+      t.organizer_ids = [...ids];
+      return organizers(db, ids);
     }),
 
     finishTasting: (id, token) => tx(async (db) => {
