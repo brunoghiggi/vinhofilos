@@ -37,6 +37,8 @@ Sem Python/Node no Windows: `powershell -ExecutionPolicy Bypass -File tools\serv
 ## Estado (11/11/2026)
 - Fluxo completo testado no modo demonstração (desktop e celular).
 - Banco real testado via API com a chave pública (19 verificações: cadastro, criação/token, chave errada recusada, ocultação antes de finalizar, sem acesso direto às tabelas privadas, hash não exposto, nota fora de 50–100 recusada, revelação e bloqueio após finalizar). Dados de teste apagados.
-- **Não testado:** a interface rodando contra o Supabase real (o servidor local não pôde ser iniciado na sessão de configuração). Fazer o teste de aceite do README pela interface.
-- Próximo passo: publicar no GitHub Pages.
+- Site publicado testado contra o banco real usando o próprio `database.js` (cadastro, criação, palpite, ocultação, finalização) e a tela de relatório renderizou corretamente. Dados de teste apagados.
+- **Não testado:** o fluxo completo clicando na interface publicada (formulários, operação de palpites, celular). Fazer o teste de aceite do README no site.
+- Publicado no GitHub Pages (branch `main`, raiz): https://brunoghiggi.github.io/vinhofilos/ — repositório público https://github.com/brunoghiggi/vinhofilos. Todo `git push` em `main` republica o site em ~1 min.
+- Git local: o proxy corporativo intercepta SSL; o repositório usa `http.sslBackend=schannel` (config local) para o push funcionar. Autor dos commits: e-mail noreply do GitHub, não o corporativo.
 - Pendências restantes estão marcadas **PENDENTE** no CONTEXT.md.
