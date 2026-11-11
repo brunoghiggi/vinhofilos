@@ -5,6 +5,8 @@ const routes = [];
 let outletEl = null;
 let cleanup = null;
 let navId = 0;
+// Caminhos visitados nesta sessão do app, para o botão "Voltar"
+const trail = [];
 
 export function route(pattern, handler) {
   const keys = [];
@@ -40,6 +42,8 @@ async function run() {
 
   if (cleanup) { try { cleanup(); } catch (e) { console.error(e); } cleanup = null; }
   updateNav(path);
+  if (trail.length > 1 && trail[trail.length - 2] === raw) trail.pop();
+  else if (trail[trail.length - 1] !== raw) trail.push(raw);
 
   let match = null;
   let params = {};
@@ -85,8 +89,20 @@ async function run() {
   }
 }
 
+/** Volta à tela anterior do app; se entrou direto por um link, vai ao início. */
+function goBack() {
+  if (trail.length > 1) history.back();
+  else location.hash = '#/';
+}
+
 function show(view) {
   const keepScroll = view.dataset.keepScroll;
+  const path = (location.hash.replace(/^#/, '') || '/').split('?')[0];
+  if (path !== '/') {
+    view.prepend(h('nav', { class: 'back-bar', 'aria-label': 'Navegação' },
+      h('button', { type: 'button', class: 'btn btn-ghost btn-sm back-btn', onclick: goBack }, '← Voltar'),
+      h('a', { href: '#/', class: 'btn btn-ghost btn-sm' }, '⌂ Início')));
+  }
   outletEl.replaceChildren(view);
   if (!keepScroll) window.scrollTo(0, 0);
   const heading = view.querySelector('h1');

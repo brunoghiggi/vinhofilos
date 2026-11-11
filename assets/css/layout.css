@@ -87,3 +87,12 @@ main:focus { outline: none; }
   display: flex; gap: 8px; align-items: center;
 }
 .bottom-bar > .btn { flex: 1; }
+
+/* Barra Voltar / Início no topo das telas internas */
+.back-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: -8px 0 0; }
+.back-bar .btn { padding-left: 8px; padding-right: 8px; }
+@media print { .back-bar { display: none; } }
+@media (max-width: 560px) {
+  .main-nav { gap: 2px; }
+  .main-nav a { font-size: .85rem; padding: 8px 2px; }
+}
