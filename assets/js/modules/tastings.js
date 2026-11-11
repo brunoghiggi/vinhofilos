@@ -184,7 +184,7 @@ function themeBlock(t) {
       editable ? h('a', { class: 'btn btn-secondary btn-sm', href: `#/degustacao/${t.id}/editar` }, t.theme ? 'Editar tema' : 'Definir tema') : null),
     h('p', {}, t.theme ? h('strong', {}, t.theme) : h('span', { class: 'muted' }, 'Ainda não definido.')),
     editable
-      ? h('p', { class: 'notice notice-private small' }, 'Só você vê o tema. Ele fica oculto para todos (inclusive na agenda, que mostra "Confraria do mês") e só aparece depois que a confraria for finalizada.')
+      ? h('p', { class: 'notice notice-private small' }, 'Só você vê o tema. Ele fica oculto para todos (inclusive na agenda, que mostra só "Confraria de <mês>") e só aparece depois que a confraria for finalizada.')
       : null);
 }
 

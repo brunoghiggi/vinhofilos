@@ -76,10 +76,13 @@ export function signed(n, formatter = (x) => formatNumber(x)) {
 
 /**
  * Título visível de uma degustação (11/11/2026). Mensais aparecem como
- * "Confraria do mês" até serem finalizadas; finalizadas mostram o tema
+ * "Confraria de <mês>" (ex.: "Confraria de novembro") até serem finalizadas; finalizadas mostram o tema
  * (public_theme só vem preenchido do banco depois da finalização).
  */
 export function tastingTitle(t) {
   if (t.status === 'finalizada') return t.public_theme || t.name;
-  return t.monthly_ref ? 'Confraria do mês' : t.name;
+  return t.monthly_ref ? `Confraria de ${MONTH_NAMES[Number(t.monthly_ref.slice(5, 7)) - 1]}` : t.name;
 }
+
+const MONTH_NAMES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho',
+  'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];

@@ -182,7 +182,7 @@ export async function renderTastingForm({ params, outlet }) {
         ? h('div', { class: 'field' },
           h('span', { style: 'font-weight:600;font-size:.92rem' }, 'Encontro'),
           h('p', { style: 'margin:0' }, t.name),
-          h('p', { class: 'field-hint' }, 'Na agenda aparece como "Confraria do mês" até ser finalizada.'))
+          h('p', { class: 'field-hint' }, 'Na agenda aparece só como "Confraria de <mês>" até ser finalizada.'))
         : field('Nome do encontro', nameIn, { required: true }),
       field('Tema da confraria', themeIn),
       h('p', { class: 'notice notice-private small', style: 'margin-top:-6px' },
