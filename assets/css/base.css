@@ -1,14 +1,26 @@
+/* Paleta inspirada no logo da Confraria Vinhófilos (11/11/2026):
+   fundo branco, grafite das taças e as 8 cores dos vinhos. */
 :root {
-  --wine: #6d1a36;
-  --wine-strong: #4e0f25;
-  --wine-soft: #f5e6ea;
+  --logo-wine: #8b3a52;
+  --logo-rose: #c67b84;
+  --logo-purple: #6b1fa0;
+  --logo-lime: #c8d64f;
+  --logo-butter: #e3dc8a;
+  --logo-coral: #df6d70;
+  --logo-peach: #f2c46e;
+  --logo-lavender: #a67dc0;
+  --graphite: #3b3b3d;
+
+  --wine: #8b3a52;
+  --wine-strong: #6c2b40;
+  --wine-soft: #f6eaef;
   --gold: #a87a2c;
-  --bg: #faf6f1;
+  --bg: #fbfafb;
   --surface: #ffffff;
-  --surface-2: #f3ece5;
-  --text: #2a1a1f;
-  --muted: #6b5a60;
-  --border: #e3d8d0;
+  --surface-2: #f4f2f4;
+  --text: #3b3b3d;
+  --muted: #6f6a6e;
+  --border: #e6e2e6;
   --ok: #2d7a4b;
   --ok-soft: #e3f3e8;
   --warn: #946000;
@@ -19,24 +31,28 @@
   --focus: #2b6cd4;
   --radius: 12px;
   --radius-sm: 8px;
-  --shadow: 0 1px 2px rgba(42, 26, 31, .06), 0 4px 14px rgba(42, 26, 31, .06);
+  --shadow: 0 1px 2px rgba(59, 59, 61, .06), 0 4px 14px rgba(59, 59, 61, .06);
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-display: Georgia, "Times New Roman", serif;
+  --font-display: "Josefin Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --stripe: linear-gradient(90deg,
+    var(--logo-wine) 0 12.5%, var(--logo-rose) 0 25%, var(--logo-purple) 0 37.5%, var(--logo-lime) 0 50%,
+    var(--logo-butter) 0 62.5%, var(--logo-coral) 0 75%, var(--logo-peach) 0 87.5%, var(--logo-lavender) 0 100%);
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --wine: #d9708f;
-    --wine-strong: #f0a3b9;
-    --wine-soft: #3a1d27;
+    --wine: #e08ea6;
+    --wine-strong: #f2b8c9;
+    --wine-soft: #3a2731;
     --gold: #d9ad5f;
-    --bg: #171113;
-    --surface: #221a1d;
-    --surface-2: #2c2226;
-    --text: #f2e9ec;
-    --muted: #b6a4aa;
-    --border: #41333a;
+    --bg: #1c1b1d;
+    --surface: #262428;
+    --surface-2: #302d32;
+    --text: #eeecef;
+    --muted: #aca6ad;
+    --border: #3f3b41;
+    --graphite: #eeecef;
     --ok: #6fcf97;
     --ok-soft: #1d3326;
     --warn: #e6b450;
@@ -66,7 +82,8 @@ body {
   background: var(--bg);
 }
 
-h1, h2, h3 { font-family: var(--font-display); line-height: 1.2; margin: 0 0 .5rem; color: var(--text); }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.2; margin: 0 0 .5rem; color: var(--text); }
+h1 { letter-spacing: .01em; }
 h1 { font-size: clamp(1.6rem, 4vw, 2.2rem); }
 h2 { font-size: 1.3rem; }
 h3 { font-size: 1.08rem; }

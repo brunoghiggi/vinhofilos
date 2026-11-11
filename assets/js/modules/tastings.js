@@ -13,6 +13,8 @@ import { guessCompleteness } from './guesses.js';
 // Componentes
 // ---------------------------------------------------------------------
 
+const LOGO_COLORS = ['wine', 'rose', 'purple', 'lime', 'butter', 'coral', 'peach', 'lavender'];
+
 /** Data de hoje no fuso da confraria, em ISO (AAAA-MM-DD). */
 const todayIso = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
 
@@ -29,7 +31,12 @@ function tastingList(items, mine = new Set(), { names = null, nextId = null } = 
   return h('ul', { class: 'list' }, items.map((t) => {
     const orgs = names ? organizerNames(t.organizer_ids, names) : '';
     return h('li', {},
-      h('a', { class: `tasting-card${t.id === nextId ? ' is-next' : ''}`, href: `#/degustacao/${t.id}` },
+      h('a', {
+        class: `tasting-card${t.id === nextId ? ' is-next' : ''}${t.monthly_ref ? ' tc-accent' : ''}`,
+        href: `#/degustacao/${t.id}`,
+        // Cada mês com uma das 8 cores das taças do logo
+        style: t.monthly_ref ? `--accent: var(--logo-${LOGO_COLORS[Number(t.monthly_ref.slice(5, 7)) % LOGO_COLORS.length]})` : null,
+      },
         h('div', { class: 'tc-main' },
           h('strong', {}, tastingTitle(t)),
           h('span', { class: 'muted small' }, formatDate(t.tasting_date)),
@@ -89,7 +96,9 @@ export async function renderHome({ outlet }) {
 
   outlet.append(
     h('section', { class: 'hero' },
-      h('h1', {}, 'Vinhófilos'),
+      h('div', { class: 'hero-brand' },
+        h('img', { class: 'hero-logo', src: 'assets/images/icon.svg', alt: '', width: 88, height: 88 }),
+        h('h1', { class: 'hero-title' }, h('span', { class: 'brand-small' }, 'Confraria'), 'Vinhófilos')),
       h('p', { class: 'lead' }, 'Degustações às cegas da confraria: prepare o encontro, registre os palpites de cada participante e revele tudo no final.'),
       h('div', { class: 'hero-actions' },
         h('a', { class: 'btn btn-primary btn-lg', href: '#/degustacao/nova' }, 'Criar degustação'),

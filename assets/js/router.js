@@ -91,6 +91,7 @@ function show(view) {
   if (!keepScroll) window.scrollTo(0, 0);
   const heading = view.querySelector('h1');
   const text = heading?.textContent || '';
-  document.title = text && text !== 'Vinhófilos' ? `${text} · Vinhófilos` : 'Vinhófilos';
+  const home = heading?.classList.contains('hero-title');
+  document.title = text && !home ? `${text} · Confraria Vinhófilos` : 'Confraria Vinhófilos';
   if (heading && !keepScroll) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
 }
