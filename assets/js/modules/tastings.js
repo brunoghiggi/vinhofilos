@@ -29,6 +29,8 @@ function organizerNames(ids, names) {
  */
 function tastingList(items, mine = new Set(), { names = null, nextId = null } = {}) {
   return h('ul', { class: 'list' }, items.map((t) => {
+    // Evento especial da agenda (ex.: confraternização): card de destaque, sem página própria
+    if (t.event_date) return h('li', {}, eventCard(t));
     const orgs = names ? organizerNames(t.organizer_ids, names) : '';
     return h('li', {},
       h('a', {
@@ -48,6 +50,18 @@ function tastingList(items, mine = new Set(), { names = null, nextId = null } = 
           mine.has(t.id) ? h('span', { class: 'badge badge-mine' }, 'Você organiza') : null,
           statusBadge(t.status))));
   }));
+}
+
+const WEEKDAYS = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+
+/** Card de destaque de um evento especial da agenda (tabela agenda_events). */
+function eventCard(e) {
+  const weekday = WEEKDAYS[new Date(`${e.event_date}T12:00:00Z`).getUTCDay()];
+  return h('div', { class: 'event-card' },
+    h('span', { class: 'badge badge-event' }, 'Evento especial'),
+    h('strong', { class: 'event-title' }, e.title),
+    h('span', { class: 'event-date' }, `${formatDate(e.event_date)} · ${weekday}`),
+    e.description ? h('p', { class: 'small', style: 'margin:0' }, e.description) : null);
 }
 
 /** Diálogo exibido logo após criar: explica e permite copiar a chave. */
@@ -77,7 +91,8 @@ export async function showTokenDialog(token, { saved = true } = {}) {
 export async function renderHome({ outlet }) {
   // Cria as degustações mensais que faltarem (idempotente no banco).
   try { await api.ensureMonthlyTastings(); } catch (err) { if (err.network) throw err; }
-  const [tastings, people] = await Promise.all([api.listTastings(), api.listParticipants()]);
+  const [tastings, people, allEvents] = await Promise.all([
+    api.listTastings(), api.listParticipants(), api.listAgendaEvents().catch(() => [])]);
   const names = new Map(people.map((p) => [p.id, p.name]));
   const mine = new Set(tokenStore.ids());
   const today = todayIso();
@@ -87,7 +102,11 @@ export async function renderHome({ outlet }) {
   const monthly = tastings.filter((t) => t.monthly_ref && t.monthly_ref.slice(0, 4) >= year)
     .sort((a, b) => a.monthly_ref.localeCompare(b.monthly_ref));
   const next = monthly.find((t) => t.status !== 'finalizada' && (t.tasting_date || '') >= today);
-  const years = [...new Set(monthly.map((t) => t.monthly_ref.slice(0, 4)))];
+  // Eventos especiais futuros entram na agenda, na ordem das datas
+  const events = allEvents.filter((e) => e.event_date >= today);
+  const agenda = [...monthly, ...events]
+    .sort((a, b) => (a.event_date || a.tasting_date || '').localeCompare(b.event_date || b.tasting_date || ''));
+  const years = [...new Set(agenda.map((x) => (x.event_date || x.monthly_ref).slice(0, 4)))].sort();
 
   const others = tastings.filter((t) => !t.monthly_ref);
   const myOpen = others.filter((t) => mine.has(t.id) && t.status !== 'finalizada');
@@ -106,7 +125,7 @@ export async function renderHome({ outlet }) {
         h('a', { class: 'btn btn-secondary btn-lg', href: '#/historico' }, 'Histórico'))),
     years.map((y) => section(`Agenda de ${y}`,
       h('p', { class: 'small muted' }, 'Uma confraria por mês, sempre no último domingo. O tema é revelado quando a confraria é finalizada.'),
-      tastingList(monthly.filter((t) => t.monthly_ref.startsWith(y)), mine, { names, nextId: next?.id }))),
+      tastingList(agenda.filter((x) => (x.event_date || x.monthly_ref).startsWith(y)), mine, { names, nextId: next?.id }))),
     myOpen.length ? section('Suas outras degustações em aberto', tastingList(myOpen, mine, { names })) : null,
     open.length ? section('Outras em preparação ou andamento', tastingList(open, mine, { names })) : null,
     finished.length

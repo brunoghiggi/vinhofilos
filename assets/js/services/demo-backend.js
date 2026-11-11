@@ -6,7 +6,8 @@ import { AppError, sleep } from '../utils/errors.js';
 
 const KEY = 'vinhofilos.demo.v1';
 
-const empty = () => ({ participants: [], tastings: [], wines: [], presence: [], guesses: [] });
+// events: eventos especiais da agenda (no banco real, tabela agenda_events, editada pelo SQL Editor)
+const empty = () => ({ participants: [], tastings: [], wines: [], presence: [], guesses: [], events: [] });
 
 function load() {
   try { return { ...empty(), ...JSON.parse(localStorage.getItem(KEY)) }; } catch { return empty(); }
@@ -257,6 +258,7 @@ export function createDemoBackend() {
         const mm = (m - 1 + k) % 12;
         const ref = `${yy}-${String(mm + 1).padStart(2, '0')}-01`;
         if (db.tastings.some((t) => t.monthly_ref === ref)) continue;
+        if (db.events.some((e) => e.replaces_month === ref)) continue; // mês ocupado por evento especial
         db.tastings.push({
           id: uuid(), name: `Confraria de ${MONTHS[mm]} de ${yy}`, tasting_date: lastSunday(yy, mm), description: null,
           status: 'rascunho', score_min: 50, score_max: 100, creator_token_hash: null,
@@ -274,6 +276,8 @@ export function createDemoBackend() {
       if (v && v.length > 150) fail('O tema pode ter no máximo 150 caracteres.');
       t.theme = v;
     }),
+
+    listAgendaEvents: () => q((db) => [...db.events].sort((a, b) => a.event_date.localeCompare(b.event_date))),
 
     claimTasting: (id) => tx(async (db) => {
       const t = db.tastings.find((x) => x.id === id) || fail('Degustação não encontrada.');

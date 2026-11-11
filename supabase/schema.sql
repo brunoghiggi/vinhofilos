@@ -118,6 +118,19 @@ alter table public.tastings add column if not exists theme text
 alter table public.tastings add column if not exists public_theme text
   generated always as (case when status = 'finalizada' then theme end) stored;
 
+-- Eventos especiais da agenda (11/11/2026), ex.: confraternização de fim de ano.
+-- Aparecem como card de destaque. Com replaces_month preenchido (1º dia do
+-- mês), a confraria daquele mês não é criada por ensure_monthly_tastings.
+-- Leitura pública; criação/edição só pelo SQL Editor (sem grants de escrita).
+create table if not exists public.agenda_events (
+  id              uuid primary key default gen_random_uuid(),
+  event_date      date not null,
+  title           text not null check (char_length(btrim(title)) between 1 and 120),
+  description     text check (description is null or char_length(description) <= 500),
+  replaces_month  date unique check (replaces_month is null or extract(day from replaces_month) = 1),
+  created_at      timestamptz not null default now()
+);
+
 -- ---------------------------------------------------------------------
 -- Permissões e RLS
 -- ---------------------------------------------------------------------
@@ -151,6 +164,13 @@ grant select (id, name, tasting_date, description, status, score_min, score_max,
 
 drop policy if exists tastings_select on public.tastings;
 create policy tastings_select on public.tastings for select to anon, authenticated using (true);
+
+-- agenda_events: somente leitura pública
+alter table public.agenda_events enable row level security;
+revoke all on public.agenda_events from anon, authenticated;
+grant select on public.agenda_events to anon, authenticated;
+drop policy if exists agenda_events_select on public.agenda_events;
+create policy agenda_events_select on public.agenda_events for select to anon, authenticated using (true);
 
 -- tasting_wines, tasting_participants, wine_guesses: sem grants e sem políticas
 -- => nenhum acesso direto. Acesso apenas via funções abaixo.
@@ -622,6 +642,8 @@ begin
   for v_month in
     select gs::date from generate_series(v_first, v_first + interval '11 months', interval '1 month') as gs
   loop
+    -- Mês ocupado por um evento especial (ex.: confraternização): sem confraria
+    continue when exists (select 1 from public.agenda_events e where e.replaces_month = v_month);
     insert into public.tastings (name, tasting_date, status, score_min, score_max, creator_token_hash, monthly_ref)
     values (format('Confraria de %s de %s', v_names[extract(month from v_month)::int], extract(year from v_month)::int),
             public._last_sunday(v_month), 'rascunho', 50, 100, null, v_month)

@@ -8,6 +8,7 @@
 //   startTasting(id, token)                  finishTasting(id, token)
 //   saveGuess(id, token, guess)
 //   ensureMonthlyTastings()                  claimTasting(id) → {id, token}
+//   listAgendaEvents()                       setTastingTheme(id, token, theme)
 //   setTastingOrganizers(id, ids) → [{id, name, nickname}]
 //
 // Backend real: Supabase (tabelas + funções RPC em supabase/schema.sql).
@@ -137,6 +138,7 @@ function createSupabaseBackend(sb) {
       rpc('set_tasting_participants', { p_tasting: id, p_token: token, p_ids: ids }),
     startTasting: (id, token) => rpc('start_tasting', { p_tasting: id, p_token: token }),
     ensureMonthlyTastings: () => rpc('ensure_monthly_tastings', {}, 3),
+    listAgendaEvents: () => read(() => sb.from('agenda_events').select('id,event_date,title,description,replaces_month').order('event_date')),
     claimTasting: (id) => rpc('claim_tasting', { p_tasting: id }),
     setTastingOrganizers: (id, ids) => rpc('set_tasting_organizers', { p_tasting: id, p_ids: ids }),
     setTastingTheme: (id, token, theme) => rpc('set_tasting_theme', { p_tasting: id, p_token: token, p_theme: theme }),

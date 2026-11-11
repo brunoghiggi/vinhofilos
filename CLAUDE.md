@@ -49,3 +49,9 @@ Sem Python/Node no Windows: `powershell -ExecutionPolicy Bypass -File tools\serv
 - Publicado no GitHub Pages (branch `main`, raiz): https://brunoghiggi.github.io/vinhofilos/ — repositório público https://github.com/brunoghiggi/vinhofilos. Todo `git push` em `main` republica o site em ~1 min.
 - Git local: o proxy corporativo intercepta SSL; o repositório usa `http.sslBackend=schannel` (config local) para o push funcionar. Autor dos commits: e-mail noreply do GitHub, não o corporativo.
 - Pendências restantes estão marcadas **PENDENTE** no CONTEXT.md.
+
+## Eventos especiais e tema visual (11/11/2026)
+- Eventos especiais da agenda: tabela `agenda_events`, sem tela de cadastro — inserir pelo SQL Editor, ex.:
+  `insert into public.agenda_events (event_date, title, description, replaces_month) values ('2027-12-12', 'Confraternização', '...', '2027-12-01');`
+  Com `replaces_month`, a confraria do mês não é criada; se ela já existir, apague-a (só se estiver vazia).
+- Tema claro/escuro: `assets/js/theme.js` (script clássico no `<head>`). No CSS, use `:root[data-theme="dark"] ...` — **não** `@media (prefers-color-scheme: dark)`, senão a escolha manual não vale.

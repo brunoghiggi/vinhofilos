@@ -17,7 +17,7 @@
   font-family: var(--font-display); font-weight: 300; text-transform: uppercase; letter-spacing: .22em; font-size: 1.05rem;
 }
 .brand-text .brand-small { font-size: .62rem; letter-spacing: .42em; color: var(--muted); margin-bottom: 3px; }
-@media (prefers-color-scheme: dark) { .brand img, .hero-logo { background: #fff; border-radius: 50%; padding: 2px; } }
+:root[data-theme="dark"] .brand img, :root[data-theme="dark"] .hero-logo { background: #fff; border-radius: 50%; padding: 2px; }
 .main-nav { display: flex; gap: 4px; overflow-x: auto; }
 .main-nav a {
   color: var(--text); text-decoration: none; padding: 8px 12px; border-radius: 999px; white-space: nowrap; font-size: .95rem;
@@ -26,11 +26,20 @@
 .main-nav a[aria-current="page"] { background: var(--wine-soft); color: var(--wine); }
 .main-nav .nav-cta { background: var(--wine); color: #fff; font-weight: 600; }
 .main-nav .nav-cta:hover { background: var(--wine-strong); }
-@media (prefers-color-scheme: dark) { .main-nav .nav-cta, .main-nav .nav-cta:hover { color: #1c1b1d; } }
+:root[data-theme="dark"] .main-nav .nav-cta, :root[data-theme="dark"] .main-nav .nav-cta:hover { color: #1c1b1d; }
+
+/* Botão de tema (Automático → Claro → Escuro) */
+.theme-toggle {
+  width: 40px; height: 40px; flex: none; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  font-size: 1.15rem; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+}
+.theme-toggle:hover { background: var(--surface-2); }
 
 @media (max-width: 560px) {
   .header-inner { padding-bottom: 8px; }
-  .main-nav { width: 100%; }
+  .theme-toggle { order: 1; margin-left: auto; }
+  .main-nav { order: 2; width: 100%; }
   .main-nav a { flex: 1; text-align: center; padding: 8px 6px; font-size: .9rem; }
 }
 
