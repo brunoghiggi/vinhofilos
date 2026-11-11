@@ -13,6 +13,20 @@ import { showTokenDialog } from './tastings.js';
 
 const MAX_YEAR = new Date().getFullYear() + 1;
 
+/** Foto da garrafa (ou silhueta de garrafa quando não há foto). */
+export function wineThumb(w, { size = 'md' } = {}) {
+  const box = h('div', { class: `wine-thumb wine-thumb-${size}` });
+  const fallback = () => box.replaceChildren(h('span', { class: 'wine-thumb-empty', 'aria-hidden': 'true' }));
+  if (w.photo_url) {
+    const img = h('img', { src: w.photo_url, alt: `Garrafa: ${w.name}`, loading: 'lazy', decoding: 'async' });
+    img.addEventListener('error', fallback, { once: true });
+    box.append(img);
+  } else fallback();
+  return box;
+}
+
+const PHOTO_RE = /^(https:\/\/|assets\/images\/)[^\s"<>]+$/;
+
 /** Lista de dados reais de um vinho (usada no detalhe e no relatório). */
 export function wineFacts(w) {
   const item = (label, value) => h('div', {}, h('dt', {}, label), h('dd', {}, value));
@@ -26,7 +40,7 @@ export function wineFacts(w) {
     w.notes ? h('div', { class: 'span-all' }, h('dt', {}, 'Observações'), h('dd', { style: 'font-weight:400' }, w.notes)) : null);
 }
 
-const blankWine = () => ({ _key: uid('w'), id: null, name: '', country: '', region: '', price: '', discounted_price: '', grape: '', vintage: '', notes: '' });
+const blankWine = () => ({ _key: uid('w'), id: null, name: '', country: '', region: '', price: '', discounted_price: '', grape: '', vintage: '', notes: '', photo_url: '' });
 
 /** Valida e converte os campos digitados. Retorna { value, errors{campo: msg} }. */
 export function validateWine(w) {
@@ -40,6 +54,8 @@ export function validateWine(w) {
   if (Number.isNaN(disc) || disc < 0) errors.discounted_price = 'Valor inválido (ex.: 99,90).';
   const vintage = parseInteger(w.vintage);
   if (Number.isNaN(vintage) || (vintage !== null && (vintage < 1800 || vintage > MAX_YEAR))) errors.vintage = `Ano entre 1800 e ${MAX_YEAR}, ou vazio se não informada.`;
+  const photo = (w.photo_url || '').trim();
+  if (photo && (photo.length > 500 || !PHOTO_RE.test(photo))) errors.photo_url = 'Use um link que comece com https:// (endereço da imagem).';
   return {
     errors,
     value: {
@@ -52,6 +68,7 @@ export function validateWine(w) {
       discounted_price: Number.isNaN(disc) ? null : disc,
       vintage: Number.isNaN(vintage) ? null : vintage,
       notes: w.notes.trim(),
+      photo_url: photo,
     },
   };
 }
@@ -86,6 +103,7 @@ export async function renderTastingForm({ params, outlet }) {
     grape: w.grape || '',
     vintage: isBlank(w.vintage) ? '' : String(w.vintage),
     notes: w.notes || '',
+    photo_url: w.photo_url || '',
   }));
   if (!wines.length) wines.push(blankWine());
 
@@ -110,6 +128,7 @@ export async function renderTastingForm({ params, outlet }) {
       price: h('input', { type: 'text', inputmode: 'decimal', value: w.price, placeholder: '0,00', autocomplete: 'off' }),
       discounted_price: h('input', { type: 'text', inputmode: 'decimal', value: w.discounted_price, placeholder: '0,00', autocomplete: 'off' }),
       notes: h('textarea', { maxlength: 2000, rows: 2, value: w.notes }),
+      photo_url: h('input', { type: 'url', maxlength: 500, value: w.photo_url, placeholder: 'https://…/garrafa.jpg', autocomplete: 'off', inputmode: 'url' }),
     };
     for (const [k, input] of Object.entries(inputs)) {
       input.addEventListener('input', () => { w[k] = input.value; setFieldError(input, null); });
@@ -138,7 +157,8 @@ export async function renderTastingForm({ params, outlet }) {
         field('Safra', inputs.vintage, { hint: 'Deixe vazio se não informada' }),
         moneyField('Preço original', inputs.price, 'Sem desconto'),
         moneyField('Preço com desconto', inputs.discounted_price, 'Opcional'),
-        h('div', { class: 'span-all' }, field('Observações', inputs.notes))));
+        h('div', { class: 'span-all' }, field('Observações', inputs.notes)),
+        h('div', { class: 'span-all' }, field('Foto da garrafa (link)', inputs.photo_url, { hint: 'Endereço de uma imagem da garrafa (comece com https://). Aparece só depois da finalização, no Histórico.' }))));
   }
 
   function drawWines() {

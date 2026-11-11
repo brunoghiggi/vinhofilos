@@ -113,7 +113,9 @@ function replaceWines(db, tastingId, wines) {
       grape: text(w.grape),
       vintage: num(w.vintage, 'Safra', { int: true, min: 1800, max: 2100 }),
       notes: text(w.notes),
+      photo_url: text(w.photo_url),
     };
+    if (row.photo_url && (row.photo_url.length > 500 || !/^(https:\/\/|assets\/images\/)[^\s"<>]+$/.test(row.photo_url))) fail(`Vinho ${i + 1}: link da foto inválido.`);
     let existing = w.id && db.wines.find((x) => x.id === w.id && x.tasting_id === tastingId);
     if (existing) Object.assign(existing, row);
     else { existing = { id: uuid(), tasting_id: tastingId, ...row }; db.wines.push(existing); }

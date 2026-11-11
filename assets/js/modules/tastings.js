@@ -6,7 +6,7 @@ import {
   h, append, toast, confirmDialog, statusBadge, emptyState, section, busy, copyText, field,
 } from '../utils/dom.js';
 import { formatDate, formatDateTime, normalize, participantName, tastingTitle } from '../utils/format.js';
-import { wineFacts } from './wines.js';
+import { wineFacts, wineThumb } from './wines.js';
 import { guessCompleteness } from './guesses.js';
 
 // ---------------------------------------------------------------------
@@ -140,10 +140,10 @@ export async function renderHistory({ outlet }) {
   const sortKey = (t) => t.tasting_date || (t.finished_at || '').slice(0, 10);
   all.sort((a, b) => sortKey(b).localeCompare(sortKey(a)));
   const names = new Map(people.map((p) => [p.id, participantName(p)]));
-  // Nomes dos vinhos de cada degustação (finalizadas são públicas); falha não impede a busca.
-  const wineNames = new Map();
+  // Vinhos de cada degustação (finalizadas são públicas); falha não impede a busca.
+  const winesOf = new Map();
   await Promise.all(all.map((t) => api.getTastingPublic(t.id)
-    .then((pub) => wineNames.set(t.id, (pub.wines || []).map((w) => w.name)))
+    .then((pub) => winesOf.set(t.id, pub.wines || []))
     .catch(() => {})));
 
   const search = h('input', {
@@ -161,13 +161,13 @@ export async function renderHistory({ outlet }) {
   icon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
   const haystack = (t) => normalize([tastingTitle(t), t.name, t.description,
-    organizerNames(t.organizer_ids, names), ...(wineNames.get(t.id) || [])].join(' '));
+    organizerNames(t.organizer_ids, names), ...(winesOf.get(t.id) || []).map((w) => `${w.name} ${w.grape || ''}`)].join(' '));
 
   function result(t) {
     const d = sortKey(t);
     const weekday = d ? WEEKDAYS[new Date(`${d}T12:00:00Z`).getUTCDay()] : '';
     const orgs = organizerNames(t.organizer_ids, names);
-    const wines = wineNames.get(t.id) || [];
+    const wines = winesOf.get(t.id) || [];
     return h('article', { class: 'gs-item' },
       h('div', { class: 'gs-crumb' },
         h('img', { class: 'gs-fav', src: 'assets/images/icon.svg', alt: '', width: 26, height: 26 }),
@@ -180,7 +180,12 @@ export async function renderHistory({ outlet }) {
         t.description || (t.monthly_ref ? `Confraria mensal de ${t.name.replace(/^Confraria de /, '')}.` : t.name),
         orgs ? ` Organizadores: ${orgs}.` : null),
       wines.length
-        ? h('div', { class: 'gs-links' }, wines.map((w) => h('span', { class: 'gs-chip' }, w)))
+        // Vinhos um abaixo do outro, com a foto da garrafa
+        ? h('ol', { class: 'gs-wines' }, wines.map((w) => h('li', {},
+          wineThumb(w, { size: 'sm' }),
+          h('div', { class: 'gs-wine-text' },
+            h('span', { class: 'gs-wine-name' }, w.name),
+            h('span', { class: 'gs-wine-meta' }, [w.grape, w.vintage].filter(Boolean).join(' · '))))))
         : null);
   }
 
@@ -363,8 +368,9 @@ function revealedBlock(t, wines, participants) {
   return [
     section(`Vinhos que participaram (${wines.length})`,
       wines.length
-        ? h('div', { class: 'stack' }, wines.map((w) => h('div', { class: 'card' },
-          h('h3', {}, `${w.position}. ${w.name}`), wineFacts(w))))
+        ? h('div', { class: 'stack' }, wines.map((w) => h('div', { class: 'card wine-photo-card' },
+          wineThumb(w, { size: 'lg' }),
+          h('div', { class: 'wine-photo-body' }, h('h3', {}, `${w.position}. ${w.name}`), wineFacts(w)))))
         : emptyState('Nenhum vinho registrado.')),
     participants.length
       ? section(`Participantes (${participants.length})`,

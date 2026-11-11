@@ -118,6 +118,14 @@ alter table public.tastings add column if not exists theme text
 alter table public.tastings add column if not exists public_theme text
   generated always as (case when status = 'finalizada' then theme end) stored;
 
+-- Foto da garrafa (11/11/2026): link https:// ou arquivo do próprio site
+-- (assets/images/...). Como os demais dados reais do vinho, só é revelada
+-- ao público depois da finalização (tasting_wines não é legível pelo anon).
+alter table public.tasting_wines add column if not exists photo_url text;
+alter table public.tasting_wines drop constraint if exists tasting_wines_photo_url_check;
+alter table public.tasting_wines add constraint tasting_wines_photo_url_check
+  check (photo_url is null or (char_length(photo_url) <= 500 and photo_url ~ '^(https://|assets/images/)[^\s"<>]+$'));
+
 -- Eventos especiais da agenda (11/11/2026), ex.: confraternização de fim de ano.
 -- Aparecem como card de destaque. Com replaces_month preenchido (1º dia do
 -- mês), a confraria daquele mês não é criada por ensure_monthly_tastings.
@@ -295,11 +303,12 @@ begin
         discounted_price = nullif(btrim(w->>'discounted_price'), '')::numeric,
         grape            = nullif(btrim(w->>'grape'), ''),
         vintage          = nullif(btrim(w->>'vintage'), '')::smallint,
-        notes            = nullif(btrim(w->>'notes'), '')
+        notes            = nullif(btrim(w->>'notes'), ''),
+        photo_url        = nullif(btrim(w->>'photo_url'), '')
       where id = v_id;
     else
       insert into public.tasting_wines
-        (tasting_id, position, name, country, region, price, discounted_price, grape, vintage, notes)
+        (tasting_id, position, name, country, region, price, discounted_price, grape, vintage, notes, photo_url)
       values (
         p_tasting, i, v_name,
         nullif(btrim(w->>'country'), ''),
@@ -308,7 +317,8 @@ begin
         nullif(btrim(w->>'discounted_price'), '')::numeric,
         nullif(btrim(w->>'grape'), ''),
         nullif(btrim(w->>'vintage'), '')::smallint,
-        nullif(btrim(w->>'notes'), '')
+        nullif(btrim(w->>'notes'), ''),
+        nullif(btrim(w->>'photo_url'), '')
       )
       returning id into v_id;
     end if;
