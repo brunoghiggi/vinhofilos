@@ -8,6 +8,7 @@ import {
   isBlank, normalize, participantName, signed, tastingTitle,
 } from '../utils/format.js';
 import { wineFacts } from './wines.js';
+import { reportCharts } from './charts.js';
 import {
   scoreGuess, participantRanking, wineRanking, RULES_TEXT,
 } from './scoring.js';
@@ -205,6 +206,7 @@ export async function renderReport({ params, outlet }) {
     preview ? h('p', { class: 'notice notice-private' }, h('strong', {}, 'Prévia do organizador. '), 'Estes dados só ficarão públicos quando a degustação for finalizada.') : null,
     t.description ? h('p', {}, t.description) : null,
     overview,
+    reportCharts({ t, wines, participants, g, pRank, wRank }),
     wines.length && participants.length
       ? section(null,
         h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Organização do relatório' }, tabBtns),
