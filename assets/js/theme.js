@@ -1,11 +1,12 @@
 // Tema claro/escuro (11/11/2026). Script clássico carregado no <head>, antes
 // do CSS ser aplicado, para não "piscar" o tema errado ao abrir.
-// Preferência por aparelho: 'auto' (segue o sistema), 'light' ou 'dark'.
+// Preferência por aparelho: 'auto' (segue o sistema), 'light', 'dark' ou
+// 'nomad' (tema NomadKit em areia/oceano/floresta, 12/11/2026).
 (function () {
   var KEY = 'vinhofilos.theme';
-  var ORDER = ['auto', 'light', 'dark'];
-  var LABEL = { auto: 'Automático', light: 'Claro', dark: 'Escuro' };
-  var ICON = { auto: '◐', light: '☀', dark: '☾' };
+  var ORDER = ['auto', 'light', 'dark', 'nomad'];
+  var LABEL = { auto: 'Automático', light: 'Claro', dark: 'Escuro', nomad: 'NomadKit (areia)' };
+  var ICON = { auto: '◐', light: '☀', dark: '☾', nomad: '⛰' };
   var media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
   function read() {
@@ -19,7 +20,7 @@
     var mode = resolved(pref);
     document.documentElement.setAttribute('data-theme', mode);
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', mode === 'dark' ? '#262428' : '#ffffff');
+    if (meta) meta.setAttribute('content', mode === 'dark' ? '#262428' : mode === 'nomad' ? '#FFFDF7' : '#ffffff');
     var btn = document.getElementById('theme-toggle');
     if (btn) {
       btn.textContent = ICON[pref];

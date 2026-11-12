@@ -216,7 +216,7 @@ legend { padding: 0; }
 /* ---------- Impressão ---------- */
 @media print {
   /* Impressão sempre em cores claras, mesmo com o tema escuro escolhido */
-  :root, :root[data-theme="dark"] {
+  :root, :root[data-theme="dark"], :root[data-theme="nomad"] {
     --bg: #fff; --surface: #fff; --surface-2: #f4f2f4; --text: #3b3b3d; --muted: #6f6a6e; --border: #ccc;
     --wine: #8b3a52; --wine-strong: #6c2b40; --wine-soft: #f6eaef; --ok: #2d7a4b; --ok-soft: #e3f3e8;
     --warn: #946000; --warn-soft: #fbf0d9; --danger: #b3261e; --danger-soft: #fbe5e3; color-scheme: light;
@@ -347,3 +347,18 @@ legend { padding: 0; }
 .gs-wine-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
 .gs-wine-name { font-size: .95rem; color: var(--text); }
 .gs-wine-meta { font-size: .8rem; color: var(--muted); }
+
+/* ---------- Tema NomadKit: areia como cor das ações principais ---------- */
+:root[data-theme="nomad"] .btn-primary,
+:root[data-theme="nomad"] .main-nav .nav-cta,
+:root[data-theme="nomad"] .segmented button[aria-pressed="true"],
+:root[data-theme="nomad"] .chip[aria-current="true"],
+:root[data-theme="nomad"] .badge-next { background: var(--nomad-sand); border-color: var(--nomad-sand); color: #2b1d0e; }
+:root[data-theme="nomad"] .chip[aria-current="true"] .chip-sub { color: #4a3420; }
+:root[data-theme="nomad"] .btn-primary:hover:not(:disabled),
+:root[data-theme="nomad"] .main-nav .nav-cta:hover { background: var(--nomad-sand-strong); color: #2b1d0e; }
+/* Oceano para links e ações secundárias */
+:where(:root[data-theme="nomad"]) a { color: var(--nomad-ocean-text); }
+:root[data-theme="nomad"] .btn-secondary { color: var(--nomad-ocean-text); border-color: var(--nomad-ocean); }
+:root[data-theme="nomad"] .btn-secondary:hover:not(:disabled) { background: var(--info-soft); }
+:root[data-theme="nomad"] .gs-head, :root[data-theme="nomad"] .gs-results { --gs-link: var(--nomad-ocean-text); }
